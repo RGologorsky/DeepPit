@@ -1,0 +1,13 @@
+cycler
+kiwisolver
+matplotlib
+meshio
+nibabel
+numpy
+packaging
+Pillow
+pkg-resources
+pyparsing
+python-dateutil
+scipy
+six

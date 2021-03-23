@@ -1,0 +1,19 @@
+  
+# ignore data folder
+train_data/
+
+# ignore ipynb_checkpoints
+.ipynb_checkpoints
+
+# ignore pycache
+__pycache__
+
+# profiling
+fil-result/
+
+# venv
+venv/
+
+# whls
+*.whl
+*.whl:Zone.Identifier

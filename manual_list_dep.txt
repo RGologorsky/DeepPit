@@ -1,0 +1,14 @@
+python3 -m pip install --upgrade pip
+python3 -m venv venv
+pip cache purge
+
+wheel
+numpy
+jupyterlab
+matplotlib
+meshio
+nibabel
+scipy
+SimpleITK-SimpleElastix
+python3 -m pip install SimpleITK_SimpleElastix-2.0.0rc2.dev909-cp38-cp38-manylinux_
+2_24_x86_64.whl
