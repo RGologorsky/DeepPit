@@ -7,68 +7,15 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 
-## Viz multi-axes
-# Vz fns
-
-def get_mid_idx(vol, ax): return vol.shape[ax]//2
-def get_mid_idxs(vol): return [get_mid_idx(vol, ax=i) for i in (0, 1, 2)]
-
-
-# ne.plot.slices(slices, titles=titles, grid=[2,3], \
-#                cmaps=['gray'], do_colorbars=True)
-
-# Viz slices from all 3 axes. 
-# Input: 3-elem list, where list[i] = slices to display from axis i
-def viz_multi_axes(vol, axes_idxs=[None, None, None], do_plot = False, **kwargs):
-  slices, titles = [], []
-  for ax in (0, 1, 2):
-    idxs = axes_idxs[ax]
-    if idxs is None:          idxs = get_mid_idx(vol, ax)
-    if isinstance(idxs, int): idxs = [idxs]
-
-    titles += [f"Ax {ax}, slice {i}"    for i in idxs]
-    slices += [np.take(vol, i, axis=ax) for i in idxs]
-
-  # plot the slices
-  if do_plot: ne.plot.slices(slices, titles=titles, **kwargs)
-
-  return slices, titles
-
-def viz_objs(*objs, do_plot = True, **kwargs):
-  # return flattened slices, titles
-  slices, titles = zip(*[viz_multi_axes(sitk.GetArrayViewFromImage(o)) for o in objs])
-  flat_slices = [s for ax in slices for s in ax]
-  flat_titles = [t for ax in titles for t in ax]
-
-  # plot the slices
-  if do_plot: ne.plot.slices(flat_slices, titles=flat_titles, **kwargs)
-
-  return flat_slices, flat_titles
-
-## Viz axis (w/ overlay)
-# viz segm
-
 # identity "do nothing" function
 def id(x): return x
 
-# Source: http://insightsoftwareconsortium.github.io/SimpleITK-Notebooks/Python_html/05_Results_Visualization.html
-def np_alpha_blend(image1, image2, alpha = 0.5, mask1=None,  mask2=None):
-    '''
-    Alaph blend two np arr (images), pixels are scalars.
-    The region that is alpha blended is controled by the given masks.
-    '''
-    
-    if mask1 is not None: mask1 = np.ones_like(image1)
-    if mask2 is not None: mask2 = np.ones_like(image2)
-     
-    intersection_mask = mask1*mask2
-    
-    intersection_image = alpha    *intersection_mask * image1 + \
-                         (1-alpha)*intersection_mask * image2
-    
-    return intersection_image + \
-           mask2-intersection_mask * image2 + \
-           mask1-intersection_mask * image1
+# rescale np arr values to be 0-255 (RGB range)
+def rgb_scale(np_arr): 
+    return ((np_arr - np_arr.min())/(np_arr.max() - np_arr.min()) * 255).astype('uint8')
+
+# convert color string to RGB tuple (0-255)
+def color2rgb(color): return (np.array(mcolors.to_rgba(color)[:3]) * 255).astype('uint8')
 
 # viz slices from a single axis, w/ optional mask overlay
 def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None, **kwargs):
@@ -98,7 +45,7 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
   np_arr = np.take(np_arr, slices, fixed_axis)
   
   # rescale RGB; 0-255, uint8 to save memory
-  np_arr = ((np_arr - np_arr.min())/(np_arr.max() - np_arr.min()) * 255).astype('uint8')
+  np_arr = rgb_scale(np_arr)
     
   # apply color binary masks
   if bin_mask_arr is not None:
@@ -106,8 +53,9 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
     bin_mask_arr = np.take(bin_mask_arr, slices, fixed_axis)
     
     # add color-coded ROIs
-    color1_rgb = options["alpha1"] * color_to_255rgb(options["color1"])
+    color1_rgb = options["alpha1"] * color2rgb(options["color1"])
     
+    # stack three channels, grayscale => RGB
     np_arr = np.stack((np_arr + bin_mask_arr * color1_rgb[0], \
                        np_arr + bin_mask_arr * color1_rgb[1], \
                        np_arr + bin_mask_arr * color1_rgb[2]),
@@ -117,7 +65,8 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
     # filter size
     bin_mask_arr2 = np.take(bin_mask_arr2, slices, fixed_axis)
     
-    color2_rgb = options["alpha2"] * color_to_255rgb(options["color2"])
+    # add RGB components to each channel of np arr
+    color2_rgb = options["alpha2"] * color2rgb(options["color2"])
     np_arr += np.stack((bin_mask_arr2 * color2_rgb[0], \
                         bin_mask_arr2 * color2_rgb[1], \
                         bin_mask_arr2 * color2_rgb[2]), \
@@ -125,7 +74,7 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
     
     
   # rescale RGB; 0-255, uint8 to save memory
-  np_arr = ((np_arr - np_arr.min())/(np_arr.max() - np_arr.min()) * 255).astype('uint8')
+  np_arr = rgb_scale(np_arr)
         
   # from SO: https://stackoverflow.com/questions/41071947/how-to-remove-the-space-between-subplots-in-matplotlib-pyplot
   

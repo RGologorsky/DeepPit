@@ -84,3 +84,61 @@ def get_isotropic(obj, new_spacing = (1,1,1), interpolator=sitk.sitkLinear):
   return sitk.Resample(obj, new_size, sitk.Transform(), interpolator,
                          obj.GetOrigin(), new_spacing, obj.GetDirection(), 0,
                          obj.GetPixelID())
+
+# Metrics
+# Source: https://www.programcreek.com/python/?CodeExample=compute+dice
+def compute_dice_coefficient(mask_gt, mask_pred):
+  """Computes soerensen-dice coefficient.
+
+  compute the soerensen-dice coefficient between the ground truth mask `mask_gt`
+  and the predicted mask `mask_pred`.
+
+  Args:
+    mask_gt: 3-dim Numpy array of type bool. The ground truth mask.
+    mask_pred: 3-dim Numpy array of type bool. The predicted mask.
+
+  Returns:
+    the dice coeffcient as float. If both masks are empty, the result is NaN.
+  """
+  volume_sum = mask_gt.sum() + mask_pred.sum()
+  if volume_sum == 0:
+    return np.NaN
+  volume_intersect = (mask_gt & mask_pred).sum()
+  return 2*volume_intersect / volume_sum 
+
+def compute_coverage(mask_gt, mask_pred):
+  """Computes percent of ground truth label covered in prediction.
+
+  compute the soerensen-dice coefficient between the ground truth mask `mask_gt`
+  and the predicted mask `mask_pred`.
+
+  Args:
+    mask_gt: 3-dim Numpy array of type bool. The ground truth mask.
+    mask_pred: 3-dim Numpy array of type bool. The predicted mask.
+
+  Returns:
+    the dice coeffcient as float. If both masks are empty, the result is NaN.
+  """
+  volume_sum = mask_gt.sum() + mask_pred.sum()
+  if volume_sum == 0:
+    return np.NaN
+  volume_intersect = (mask_gt & mask_pred).sum()
+  return volume_intersect / mask_gt.sum() 
+
+# https://stackoverflow.com/questions/31400769/bounding-box-of-numpy-array
+def bbox(mask):
+
+    i = np.any(mask, axis=(1, 2))
+    j = np.any(mask, axis=(0, 2))
+    k = np.any(mask, axis=(0, 1))
+
+    imin, imax = np.where(i)[0][[0, -1]]
+    jmin, jmax = np.where(j)[0][[0, -1]]
+    kmin, kmax = np.where(k)[0][[0, -1]]
+
+    return imin, imax, jmin, jmax, kmin, kmax
+
+def print_bbox(imin, imax, jmin, jmax, kmin, kmax):
+    print(f"Bbox coords: ({imin}, {jmin}, {kmin}) to ({imax}, {jmax}, {kmax}). Size: {imax - imin}, {jmax-jmin}, {kmax-kmin}.")
+    print(f"Bounding box coord: from location ({jmin}, {kmin}) of slice {imin} to location ({jmax}, {kmax}) of slice {imax}.")
+    #print(f"Slices: {imin}, {imax} ({imax-imin}), Rows: {jmin}, {jmax} ({jmax-jmin}), Cols: {kmin}, {kmax} ({kmax-kmin}).")
