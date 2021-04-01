@@ -51,6 +51,25 @@ def viz_objs(*objs, do_plot = True, **kwargs):
 # identity "do nothing" function
 def id(x): return x
 
+# Source: http://insightsoftwareconsortium.github.io/SimpleITK-Notebooks/Python_html/05_Results_Visualization.html
+def np_alpha_blend(image1, image2, alpha = 0.5, mask1=None,  mask2=None):
+    '''
+    Alaph blend two np arr (images), pixels are scalars.
+    The region that is alpha blended is controled by the given masks.
+    '''
+    
+    if mask1 is not None: mask1 = np.ones_like(image1)
+    if mask2 is not None: mask2 = np.ones_like(image2)
+     
+    intersection_mask = mask1*mask2
+    
+    intersection_image = alpha    *intersection_mask * image1 + \
+                         (1-alpha)*intersection_mask * image2
+    
+    return intersection_image + \
+           mask2-intersection_mask * image2 + \
+           mask1-intersection_mask * image1
+
 # viz slices from a single axis, w/ optional mask overlay
 def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None, **kwargs):
   n_slices = len(slices)
@@ -61,11 +80,11 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
     "wspace": 0.0,
     "hspace": 0.0,
     "fig_mult": 1,
-    "cmap0": "rainbow",
-    "cmap1": mcolors.LinearSegmentedColormap.from_list("", ["white", "yellow"]),
-    "cmap2": mcolors.LinearSegmentedColormap.from_list("", ["white", "blue"]),
-    "alpha1": 0.7,
-    "alpha2": 0.7,
+    "cmap0": None, #plt.cm.gray, #"rainbow",
+    "color1": "yellow",
+    "color2": "blue",
+    "alpha1": 0.3,
+    "alpha2": 0.3,
     "axis_fn": id,
   }
 
@@ -74,7 +93,40 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
   axis_fn      = options["axis_fn"]
   nrows, ncols = options["grid"]
   fig_mult     = options["fig_mult"]
-
+  
+  # filter size down to slices of interest
+  np_arr = np.take(np_arr, slices, fixed_axis)
+  
+  # rescale RGB; 0-255, uint8 to save memory
+  np_arr = ((np_arr - np_arr.min())/(np_arr.max() - np_arr.min()) * 255).astype('uint8')
+    
+  # apply color binary masks
+  if bin_mask_arr is not None:
+    # filter size
+    bin_mask_arr = np.take(bin_mask_arr, slices, fixed_axis)
+    
+    # add color-coded ROIs
+    color1_rgb = options["alpha1"] * color_to_255rgb(options["color1"])
+    
+    np_arr = np.stack((np_arr + bin_mask_arr * color1_rgb[0], \
+                       np_arr + bin_mask_arr * color1_rgb[1], \
+                       np_arr + bin_mask_arr * color1_rgb[2]),
+                       axis = -1)
+    
+  if bin_mask_arr2 is not None:
+    # filter size
+    bin_mask_arr2 = np.take(bin_mask_arr2, slices, fixed_axis)
+    
+    color2_rgb = options["alpha2"] * color_to_255rgb(options["color2"])
+    np_arr += np.stack((bin_mask_arr2 * color2_rgb[0], \
+                        bin_mask_arr2 * color2_rgb[1], \
+                        bin_mask_arr2 * color2_rgb[2]), \
+                       axis=-1) 
+    
+    
+  # rescale RGB; 0-255, uint8 to save memory
+  np_arr = ((np_arr - np_arr.min())/(np_arr.max() - np_arr.min()) * 255).astype('uint8')
+        
   # from SO: https://stackoverflow.com/questions/41071947/how-to-remove-the-space-between-subplots-in-matplotlib-pyplot
   
   fig = plt.figure(figsize=(fig_mult*(ncols+1), fig_mult*(nrows+1))) 
@@ -97,16 +149,7 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
 
       # in case slices in grid > n_slices
       if index < n_slices: 
-        ax.imshow(axis_fn(np.take(np_arr, slices[index], fixed_axis)), cmap=options["cmap0"])
-        
-        # overlay binary mask if provided
-        if bin_mask_arr is not None:
-          ax.imshow(axis_fn(np.take(bin_mask_arr, slices[index], fixed_axis)), cmap=options["cmap1"], alpha=options["alpha1"])
-
-        # overlay binary mask if provided
-        if bin_mask_arr2 is not None:
-          ax.imshow(axis_fn(np.take(bin_mask_arr2, slices[index], fixed_axis)), cmap=options["cmap2"], alpha=options["alpha2"])
-
+        ax.imshow(axis_fn(np.take(np_arr, index, fixed_axis)), cmap=options["cmap0"])
       else: 
         ax.imshow(np.full((1,1,3), 255)) # show default white image of size 1x1
       
@@ -114,22 +157,3 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
   
   plt.show()
   # return plt
-
-# Source: http://insightsoftwareconsortium.github.io/SimpleITK-Notebooks/Python_html/05_Results_Visualization.html
-def np_alpha_blend(image1, image2, alpha = 0.5, mask1=None,  mask2=None):
-    '''
-    Alaph blend two np arr (images), pixels are scalars.
-    The region that is alpha blended is controled by the given masks.
-    '''
-    
-    if mask1 is not None: mask1 = np.ones_like(image1)
-    if mask2 is not None: mask2 = np.ones_like(image2)
-     
-    intersection_mask = mask1*mask2
-    
-    intersection_image = alpha    *intersection_mask * image1 + \
-                         (1-alpha)*intersection_mask * image2
-    
-    return intersection_image + \
-           mask2-intersection_mask * image2 + \
-           mask1-intersection_mask * image1
