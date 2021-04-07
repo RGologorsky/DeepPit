@@ -1,8 +1,25 @@
-# Helper fns
+# Preprocess Helper fns
+#
+#  1. make_affine/segm2mask
+#  2. get_isotropic
+#  3. get_data_dict
+#  4. folder2objs
+#  5. mask2bbox / print bbox
+#
+
+# load data
+import os
+
+# filter filenames for .nii
+import glob
+
+# meshio for 3DSlicer segm obj
+import meshio
 
 # numpy to SITK conversion
 import numpy     as np
 import SimpleITK as sitk
+from helpers_general import np2sitk, sitk2np
 
 # segmentation
 from scipy.spatial   import Delaunay
@@ -40,36 +57,6 @@ def seg2mask(image_obj, segm_obj):
     return (Delaunay(segm_obj.points).find_simplex(physical_pts) >= 0).reshape(dims)
 
 
-## Misc
-
-# round all floats in a tuple to 3 decimal places
-def round_tuple(t, d=3): return tuple(round(x,d) for x in t)
-
-# returns range obj as list
-def lrange(a,b): return list(range(a,b))
-
-# SITK
-
-## Np/SITK conv
-
-# see which slices contain ROI
-def get_roi_range(bin_mask_arr, axis):
-  slices = np.unique(np.nonzero(bin_mask_arr)[axis])
-  return min(slices), max(slices)
-
-# sitk obj and np array have different index conventions
-def sitk2np(obj): return np.swapaxes(sitk.GetArrayViewFromImage(obj), 0, 2)
-
-# numpy mask arr into sitk obj
-def np2sitk(mask_arr, sitk_image):
-  # convert bool mask to int mask
-  # swap axes for sitk
-  obj = sitk.GetImageFromArray(np.swapaxes(mask_arr.astype(np.uint8), 0, 2))
-  obj.SetOrigin(sitk_image.GetOrigin())
-  obj.SetSpacing(sitk_image.GetSpacing())   
-  obj.SetDirection(sitk_image.GetDirection())
-  return obj
-
 # isotropic
 def get_isotropic(obj, new_spacing = (1,1,1), interpolator=sitk.sitkLinear):
   """ returns obj w/ 1mm isotropic voxels """
@@ -85,48 +72,40 @@ def get_isotropic(obj, new_spacing = (1,1,1), interpolator=sitk.sitkLinear):
                          obj.GetOrigin(), new_spacing, obj.GetDirection(), 0,
                          obj.GetPixelID())
 
-# Metrics
-# Source: https://www.programcreek.com/python/?CodeExample=compute+dice
-def compute_dice_coefficient(mask_gt, mask_pred):
-  """Computes soerensen-dice coefficient.
 
-  compute the soerensen-dice coefficient between the ground truth mask `mask_gt`
-  and the predicted mask `mask_pred`.
+# make a dictionary of key = train folder, value = (segm obj, nii file)
+def get_data_dict(train_path):
+    train_folders   = os.listdir(train_path)
+    train_data_dict = {}
+    for folder in train_folders:
+      segm_obj_path = os.path.join(train_path, folder, "Segmentation.obj")
 
-  Args:
-    mask_gt: 3-dim Numpy array of type bool. The ground truth mask.
-    mask_pred: 3-dim Numpy array of type bool. The predicted mask.
+      mp_path      = os.path.join(train_path, folder, "MP-RAGE")
+      folder1_path = os.path.join(mp_path, os.listdir(mp_path)[0])
+      folder2_path = os.path.join(folder1_path, os.listdir(folder1_path)[0])
+      nii_path     = glob.glob(f"{folder2_path}/*.nii")[0] #os.path.join(folder2_path, os.listdir(folder2_path)[0])
+      train_data_dict[folder] = (segm_obj_path, nii_path)
+    return train_data_dict
 
-  Returns:
-    the dice coeffcient as float. If both masks are empty, the result is NaN.
-  """
-  volume_sum = mask_gt.sum() + mask_pred.sum()
-  if volume_sum == 0:
-    return np.NaN
-  volume_intersect = (mask_gt & mask_pred).sum()
-  return 2*volume_intersect / volume_sum 
+# given folder name, return isotropic SITK obj of nii and segm obj
+def folder2objs(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_interpolator = sitk.sitkLinear):
+    segm_path, file = train_data_dict[folder_name]
 
-def compute_coverage(mask_gt, mask_pred):
-  """Computes percent of ground truth label covered in prediction.
-
-  compute the soerensen-dice coefficient between the ground truth mask `mask_gt`
-  and the predicted mask `mask_pred`.
-
-  Args:
-    mask_gt: 3-dim Numpy array of type bool. The ground truth mask.
-    mask_pred: 3-dim Numpy array of type bool. The predicted mask.
-
-  Returns:
-    the dice coeffcient as float. If both masks are empty, the result is NaN.
-  """
-  volume_sum = mask_gt.sum() + mask_pred.sum()
-  if volume_sum == 0:
-    return np.NaN
-  volume_intersect = (mask_gt & mask_pred).sum()
-  return volume_intersect / mask_gt.sum() 
+    # compile MR obj from nii file using Simple ITK reader
+    obj        = sitk.ReadImage(file)
+    segm       = meshio.read(segm_path)
+    mask_arr   = seg2mask(obj, segm)
+    
+    # preprocess
+    
+    # 1. isotropic
+    iso_obj       = get_isotropic(obj, iso_spacing, iso_interpolator)
+    iso_mask_obj  = get_isotropic(np2sitk(mask_arr, obj), iso_spacing, iso_interpolator)
+    
+    return iso_obj, iso_mask_obj
 
 # https://stackoverflow.com/questions/31400769/bounding-box-of-numpy-array
-def bbox(mask):
+def mask2bbox(mask):
 
     i = np.any(mask, axis=(1, 2))
     j = np.any(mask, axis=(0, 2))

@@ -16,6 +16,7 @@ def rgb_scale(np_arr):
 
 # convert color string to RGB tuple (0-255)
 def color2rgb(color): return (np.array(mcolors.to_rgba(color)[:3]) * 255).astype('uint8')
+    
 
 # viz slices from a single axis, w/ optional mask overlay
 def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None, **kwargs):
@@ -33,6 +34,8 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
     "alpha1": 0.3,
     "alpha2": 0.3,
     "axis_fn": id,
+    "crop_coords": None,
+    "crop_extra": 0,
   }
 
   options.update(kwargs)
@@ -41,17 +44,41 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
   nrows, ncols = options["grid"]
   fig_mult     = options["fig_mult"]
   
-  # filter size down to slices of interest
+  # 1. filter size down to slices of interest
+  # 2. within slices, crop inputs to bbox (+- extra area around bbox for context)
+    
+  #  crop to fixed axis' slices of interest to be viz
   np_arr = np.take(np_arr, slices, fixed_axis)
-  
+  if bin_mask_arr is not None:   bin_mask_arr  = np.take(bin_mask_arr, slices, fixed_axis)
+  if bin_mask_arr2 is not None:  bin_mask_arr2 = np.take(bin_mask_arr2, slices, fixed_axis)
+        
+  # if cropping, filter down to crop area (+ extra)
+  if options["crop_coords"] is not None:
+    pad = options["crop_extra"]
+    imin, imax, jmin, jmax, kmin, kmax = options["crop_coords"]
+    if fixed_axis == 0:   
+        jmin -= pad; jmax += pad; kmin -= pad; kmax += pad;
+        np_arr = np_arr[:, jmin:jmax, kmin:kmax]
+        if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[:, jmin:jmax, kmin:kmax]
+        if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[:, jmin:jmax, kmin:kmax]
+        
+    elif fixed_axis == 1: 
+        imin -= pad; imax += pad; kmin -= pad; kmax += pad;
+        np_arr = np_arr[imin:imax, :, kmin:kmax]
+        if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[imin:imax, :, kmin:kmax]
+        if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[imin:imax, :, kmin:kmax]
+        
+    else:
+        imin -= pad; imax += pad; jmin -= pad; jmax += pad;
+        np_arr = np_arr[imin:imax, jmin:jmax, :]
+        if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[imin:imax, jmin:jmax, :]
+        if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[imin:imax, jmin:jmax, :]
+    
   # rescale RGB; 0-255, uint8 to save memory
   np_arr = rgb_scale(np_arr)
     
   # apply color binary masks
-  if bin_mask_arr is not None:
-    # filter size
-    bin_mask_arr = np.take(bin_mask_arr, slices, fixed_axis)
-    
+  if bin_mask_arr is not None:              
     # add color-coded ROIs
     color1_rgb = options["alpha1"] * color2rgb(options["color1"])
     
@@ -62,9 +89,6 @@ def viz_axis(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None
                        axis = -1)
     
   if bin_mask_arr2 is not None:
-    # filter size
-    bin_mask_arr2 = np.take(bin_mask_arr2, slices, fixed_axis)
-    
     # add RGB components to each channel of np arr
     color2_rgb = options["alpha2"] * color2rgb(options["color2"])
     np_arr += np.stack((bin_mask_arr2 * color2_rgb[0], \
