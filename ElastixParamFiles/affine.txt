@@ -1,3 +1,5 @@
+// Source: http://elastix.bigr.nl/wiki/index.php/Par0000
+
 // Description: affine, MI, ASGD
 
 //ImageTypes
