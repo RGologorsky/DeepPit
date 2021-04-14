@@ -2,6 +2,9 @@
 # ignore data folder
 train_data/
 
+# ignore zip file
+samir_images-labelled.zip
+
 # ignore ipynb_checkpoints
 .ipynb_checkpoints
 
