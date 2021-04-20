@@ -31,9 +31,9 @@ from scipy.spatial   import Delaunay
 
 # 1. Get affine matrix in SITK
 # https://niftynet.readthedocs.io/en/v0.2.2/_modules/niftynet/io/simple_itk_as_nibabel.html
-def make_affine(simpleITKImage):
+def make_affine(simpleITKImage, ras_adj):
     # get affine transform in LPS
-    c = [simpleITKImage.TransformContinuousIndexToPhysicalPoint(p)
+    c = [simpleITKImage.TransformIndexToPhysicalPoint(p)
          for p in ((1, 0, 0),
                    (0, 1, 0),
                    (0, 0, 1),
@@ -45,13 +45,14 @@ def make_affine(simpleITKImage):
     ], axis=1)
     affine = np.transpose(affine)
     # convert to RAS to match nibabel
-    affine = np.matmul(np.diag([-1., -1., 1., 1.]), affine)
+    if ras_adj:
+        affine = np.matmul(np.diag([-1., -1., 1., 1.]), affine)
     return affine
 
 # Seg2mask
-def seg2mask(image_obj, segm_obj):
+def seg2mask(image_obj, segm_obj, ras_adj):
     dims = image_obj.GetSize()
-    aff     = make_affine(image_obj)
+    aff     = make_affine(image_obj, ras_adj)
     idx_pts = np.indices(dims[::-1], dtype=np.uint16).T.reshape(-1,3)[:,[2,1,0]]
     physical_pts = (np.dot(aff[:3,:3], idx_pts.T) + aff[:3,3:4]).T 
     return (Delaunay(segm_obj.points).find_simplex(physical_pts) >= 0).reshape(dims)
@@ -88,13 +89,13 @@ def get_data_dict(train_path):
     return train_data_dict
 
 # given folder name, return isotropic SITK obj of nii and segm obj
-def folder2objs(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_interpolator = sitk.sitkLinear):
+def folder2objs(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_interpolator = sitk.sitkLinear, ras_adj = False):
     segm_path, file = train_data_dict[folder_name]
 
     # compile MR obj from nii file using Simple ITK reader
     obj        = sitk.ReadImage(file)
     segm       = meshio.read(segm_path)
-    mask_arr   = seg2mask(obj, segm)
+    mask_arr   = seg2mask(obj, segm, ras_adj)
     
     # preprocess
     
@@ -105,6 +106,7 @@ def folder2objs(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_inter
     return iso_obj, iso_mask_obj
 
 # https://stackoverflow.com/questions/31400769/bounding-box-of-numpy-array
+# https://stackoverflow.com/questions/39206986/numpy-get-rectangle-area-just-the-size-of-mask/48346079
 def mask2bbox(mask):
 
     i = np.any(mask, axis=(1, 2))
@@ -117,6 +119,12 @@ def mask2bbox(mask):
 
     return imin, imax, jmin, jmax, kmin, kmax
 
+def get_bbox_size(imin, imax, jmin, jmax, kmin, kmax):
+    return {imax - imin}, {jmax-jmin}, {kmax-kmin}
+
+def print_bbox_size(imin, imax, jmin, jmax, kmin, kmax):
+    print(f"{imax - imin}, {jmax-jmin}, {kmax-kmin}")
+    
 def print_bbox(imin, imax, jmin, jmax, kmin, kmax):
     print(f"Bbox coords: ({imin}, {jmin}, {kmin}) to ({imax}, {jmax}, {kmax}). Size: {imax - imin}, {jmax-jmin}, {kmax-kmin}.")
     print(f"Bounding box coord: from location ({jmin}, {kmin}) of slice {imin} to location ({jmax}, {kmax}) of slice {imax}.")

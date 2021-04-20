@@ -4,10 +4,15 @@
 #  2. round_tuple
 #  3. lrange
 #  4. get_roi_range
+#  5. numbers2groups (pretty print consec numbers as groups) 
 
 # numpy to SITK conversion
 import numpy     as np
 import SimpleITK as sitk
+
+# consecutive numbers
+from operator import itemgetter
+from itertools import groupby
 
 # sitk obj and np array have different index conventions
 def sitk2np(obj): return np.swapaxes(sitk.GetArrayViewFromImage(obj), 0, 2)
@@ -33,3 +38,15 @@ def lrange(a,b): return list(range(a,b))
 def get_roi_range(bin_mask_arr, axis):
   slices = np.unique(np.nonzero(bin_mask_arr)[axis])
   return min(slices), max(slices)
+
+# find groups of consecutive numbers (e.g. [1,2,3,5,6,7] returnns (1,3), (5,7)
+# https://stackoverflow.com/questions/2154249/identify-groups-of-continuous-numbers-in-a-list
+def numbers2groups(data):
+    ranges = []
+    for key, group in groupby(enumerate(data), lambda x: x[0] - x[1]):
+        group = list(map(itemgetter(1), group))
+        if len(group) > 1:
+            ranges.append(range(group[0], group[-1]))
+        else:
+            ranges.append(group[0])
+    return ranges
