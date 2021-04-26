@@ -27,6 +27,12 @@ def np2sitk(mask_arr, sitk_image):
   obj.SetDirection(sitk_image.GetDirection())
   return obj
 
+def print_sitk_info(image):    
+    print("Size: ", image.GetSize())
+    print("Origin: ", image.GetOrigin())
+    print("Spacing: ", image.GetSpacing())
+    print("Direction: ", image.GetDirection())
+    print(f"Pixel type: {image.GetPixelIDValue()} = {image.GetPixelIDTypeAsString()}")
 
 # round all floats in a tuple to 3 decimal places
 def round_tuple(t, d=3): return tuple(round(x,d) for x in t)

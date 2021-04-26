@@ -24,6 +24,17 @@ from helpers_general import np2sitk, sitk2np
 # segmentation
 from scipy.spatial   import Delaunay
 
+# given folder name, return isotropic SITK obj of nii and segm obj
+def folder2objs(folder_name, train_data_dict, ras_adj = False):
+    segm_path, file = train_data_dict[folder_name]
+
+    # compile MR obj from nii file using Simple ITK reader
+    obj        = sitk.ReadImage(file)
+    segm       = meshio.read(segm_path)
+    mask_arr   = seg2mask(obj, segm, ras_adj)
+    
+    return obj, np2sitk(mask_arr, obj)
+
 # Convert segmentation object to numpy binary mask
 # 1. Get affine matrix in SITK (aff tfm: idx coord => physical space coord)
 # 2. Convert image idxs to physical coords
@@ -88,22 +99,16 @@ def get_data_dict(train_path):
       train_data_dict[folder] = (segm_obj_path, nii_path)
     return train_data_dict
 
-# given folder name, return isotropic SITK obj of nii and segm obj
-def folder2objs(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_interpolator = sitk.sitkLinear, ras_adj = False):
-    segm_path, file = train_data_dict[folder_name]
+# # given folder name, return isotropic SITK obj of nii and segm obj
+# def folder2objs(folder_name, train_data_dict, ras_adj = False):
+#     segm_path, file = train_data_dict[folder_name]
 
-    # compile MR obj from nii file using Simple ITK reader
-    obj        = sitk.ReadImage(file)
-    segm       = meshio.read(segm_path)
-    mask_arr   = seg2mask(obj, segm, ras_adj)
+#     # compile MR obj from nii file using Simple ITK reader
+#     obj        = sitk.ReadImage(file)
+#     segm       = meshio.read(segm_path)
+#     mask_arr   = seg2mask(obj, segm, ras_adj)
     
-    # preprocess
-    
-    # 1. isotropic
-    iso_obj       = get_isotropic(obj, iso_spacing, iso_interpolator)
-    iso_mask_obj  = get_isotropic(np2sitk(mask_arr, obj), iso_spacing, iso_interpolator)
-    
-    return iso_obj, iso_mask_obj
+#     return obj, np2sitk(mask_arr, obj)
 
 # https://stackoverflow.com/questions/31400769/bounding-box-of-numpy-array
 # https://stackoverflow.com/questions/39206986/numpy-get-rectangle-area-just-the-size-of-mask/48346079
@@ -129,3 +134,22 @@ def print_bbox(imin, imax, jmin, jmax, kmin, kmax):
     print(f"Bbox coords: ({imin}, {jmin}, {kmin}) to ({imax}, {jmax}, {kmax}). Size: {imax - imin}, {jmax-jmin}, {kmax-kmin}.")
     print(f"Bounding box coord: from location ({jmin}, {kmin}) of slice {imin} to location ({jmax}, {kmax}) of slice {imax}.")
     #print(f"Slices: {imin}, {imax} ({imax-imin}), Rows: {jmin}, {jmax} ({jmax-jmin}), Cols: {kmin}, {kmax} ({kmax-kmin}).")
+    
+    
+    
+# given folder name, return isotropic SITK obj of nii and segm obj
+def folder2objs_old(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_interpolator = sitk.sitkLinear, ras_adj = False):
+    segm_path, file = train_data_dict[folder_name]
+
+    # compile MR obj from nii file using Simple ITK reader
+    obj        = sitk.ReadImage(file)
+    segm       = meshio.read(segm_path)
+    mask_arr   = seg2mask(obj, segm, ras_adj)
+    
+    # preprocess
+    
+    # 1. isotropic
+    iso_obj       = get_isotropic(obj, iso_spacing, iso_interpolator)
+    iso_mask_obj  = get_isotropic(np2sitk(mask_arr, obj), iso_spacing, iso_interpolator)
+    
+    return iso_obj, iso_mask_obj
