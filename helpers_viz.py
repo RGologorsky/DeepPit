@@ -46,20 +46,35 @@ def get_viz_arr(np_arr, slices, fixed_axis, bin_mask_arr, bin_mask_arr2, \
   if crop_coords is not None:
     pad = crop_extra
     imin, imax, jmin, jmax, kmin, kmax = crop_coords
+    
+    shape0, shape1, shape2 = np_arr.shape
+        
     if fixed_axis == 0:   
         jmin -= pad; jmax += pad; kmin -= pad; kmax += pad;
+
+        jmin = max(0, jmin); kmin = max(0, kmin)
+        jmax = min(jmax,shape1); kmax = min(kmax, shape2)
+
         np_arr = np_arr[:, jmin:jmax, kmin:kmax]
         if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[:, jmin:jmax, kmin:kmax]
         if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[:, jmin:jmax, kmin:kmax]
-        
+
     elif fixed_axis == 1: 
         imin -= pad; imax += pad; kmin -= pad; kmax += pad;
+
+        imin = max(0, imin); kmin = max(0, kmin)
+        imax = min(imax, shape0); kmax = min(kmax, shape2)
+
         np_arr = np_arr[imin:imax, :, kmin:kmax]
         if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[imin:imax, :, kmin:kmax]
         if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[imin:imax, :, kmin:kmax]
-        
+
     else:
         imin -= pad; imax += pad; jmin -= pad; jmax += pad;
+
+        imin = max(0, imin); jmin = max(0, jmin)
+        imax = min(imax, shape0); jmax = min(jmax, shape1)
+
         np_arr = np_arr[imin:imax, jmin:jmax, :]
         if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[imin:imax, jmin:jmax, :]
         if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[imin:imax, jmin:jmax, :]
@@ -183,6 +198,7 @@ def viz_axis(**kwargs):
 
 # viz slices from a single axis, w/ optional mask overlay
 def viz_get_np_arr(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None, crop_coords = None, crop_extra = 0):
+    print("hello")
     n_slices = len(slices)
 
     # 1. filter size down to slices of interest
@@ -195,23 +211,42 @@ def viz_get_np_arr(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 
         
     # if cropping, filter down to crop area (+ extra)
     if options["crop_coords"] is not None:
+        # print("hi")
         pad = options["crop_extra"]
         imin, imax, jmin, jmax, kmin, kmax = options["crop_coords"]
         
+        shape0, shape1, shape2 = np_arr.shape
+        
         if fixed_axis == 0:   
             jmin -= pad; jmax += pad; kmin -= pad; kmax += pad;
+            
+            jmin = max(0, jmin); kmin = max(0, kmin)
+            jmax = min(0, shape1); kmax = min(0, shape2)
+            
             np_arr = np_arr[:, jmin:jmax, kmin:kmax]
             if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[:, jmin:jmax, kmin:kmax]
             if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[:, jmin:jmax, kmin:kmax]
+            
+            print("hi")
+            print(jmin, jmax, kmin, kmax)
+            print(np_arr.shape)
 
         elif fixed_axis == 1: 
             imin -= pad; imax += pad; kmin -= pad; kmax += pad;
+            
+            imin = max(0, imin); kmin = max(0, kmin)
+            imax = min(0, shape0); kmax = min(0, shape2)
+            
             np_arr = np_arr[imin:imax, :, kmin:kmax]
             if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[imin:imax, :, kmin:kmax]
             if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[imin:imax, :, kmin:kmax]
 
         else:
             imin -= pad; imax += pad; jmin -= pad; jmax += pad;
+            
+            imin = max(0, imin); jmin = max(0, jmin)
+            imax = min(0, shape0); jmax = min(0, shape1)
+            
             np_arr = np_arr[imin:imax, jmin:jmax, :]
             if bin_mask_arr is not None:  bin_mask_arr  = bin_mask_arr[imin:imax, jmin:jmax, :]
             if bin_mask_arr2 is not None: bin_mask_arr2 = bin_mask_arr2[imin:imax, jmin:jmax, :]

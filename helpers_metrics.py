@@ -20,6 +20,9 @@ def compute_dice_coefficient(mask_gt, mask_pred):
   Returns:
     the dice coeffcient as float. If both masks are empty, the result is NaN.
   """
+  mask_gt   = mask_gt.astype(bool)
+  mask_pred = mask_pred.astype(bool)
+
   volume_sum = mask_gt.sum() + mask_pred.sum()
   if volume_sum == 0:
     return np.NaN

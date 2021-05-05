@@ -122,7 +122,8 @@ def mask2bbox(mask):
     jmin, jmax = np.where(j)[0][[0, -1]]
     kmin, kmax = np.where(k)[0][[0, -1]]
 
-    return imin, imax, jmin, jmax, kmin, kmax
+    # inclusive idxs
+    return imin, imax+1, jmin, jmax+1, kmin, kmax+1
 
 def get_bbox_size(imin, imax, jmin, jmax, kmin, kmax):
     return {imax - imin}, {jmax-jmin}, {kmax-kmin}
