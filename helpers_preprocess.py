@@ -5,6 +5,8 @@
 #  3. get_data_dict
 #  4. folder2objs
 #  5. mask2bbox / print bbox
+#  6. crop thershold
+#  7. resample2reference
 #
 
 # load data
@@ -19,7 +21,7 @@ import meshio
 # numpy to SITK conversion
 import numpy     as np
 import SimpleITK as sitk
-from helpers_general import np2sitk, sitk2np
+from helpers_general import mask2sitk, sitk2np
 
 # segmentation
 from scipy.spatial   import Delaunay
@@ -29,11 +31,11 @@ def folder2objs(folder_name, train_data_dict, ras_adj = False):
     segm_path, file = train_data_dict[folder_name]
 
     # compile MR obj from nii file using Simple ITK reader
-    obj        = sitk.ReadImage(file)
+    obj        = sitk.ReadImage(file, sitk.sitkFloat32)
     segm       = meshio.read(segm_path)
     mask_arr   = seg2mask(obj, segm, ras_adj)
     
-    return obj, np2sitk(mask_arr, obj)
+    return obj, mask2sitk(mask_arr, obj)
 
 # Convert segmentation object to numpy binary mask
 # 1. Get affine matrix in SITK (aff tfm: idx coord => physical space coord)
@@ -114,6 +116,8 @@ def get_data_dict(train_path):
 # https://stackoverflow.com/questions/39206986/numpy-get-rectangle-area-just-the-size-of-mask/48346079
 def mask2bbox(mask):
 
+    mask = mask.astype(bool)
+    
     i = np.any(mask, axis=(1, 2))
     j = np.any(mask, axis=(0, 2))
     k = np.any(mask, axis=(0, 1))
@@ -135,9 +139,89 @@ def print_bbox(imin, imax, jmin, jmax, kmin, kmax):
     print(f"Bbox coords: ({imin}, {jmin}, {kmin}) to ({imax}, {jmax}, {kmax}). Size: {imax - imin}, {jmax-jmin}, {kmax-kmin}.")
     print(f"Bounding box coord: from location ({jmin}, {kmin}) of slice {imin} to location ({jmax}, {kmax}) of slice {imax}.")
     #print(f"Slices: {imin}, {imax} ({imax-imin}), Rows: {jmin}, {jmax} ({jmax-jmin}), Cols: {kmin}, {kmax} ({kmax-kmin}).")
+        
+
+# Crop https://github.com/SimpleITK/ISBI2018_TUTORIAL/blob/master/python/03_data_augmentation.ipynb
+def threshold_based_crop(image, mask):
+    '''
+    Use Otsu's threshold estimator to separate background and foreground. In medical imaging the background is
+    usually air. Then crop the image using the foreground's axis aligned bounding box.
+    Args:
+        image (SimpleITK image): An image where the anatomy and background intensities form a bi-modal distribution
+                                 (the assumption underlying Otsu's method.)
+    Return:
+        Cropped image based on foreground's axis aligned bounding box.  
+    '''
+    # Set pixels that are in [min_intensity,otsu_threshold] to inside_value, values above otsu_threshold are
+    # set to outside_value. The anatomy has higher intensity values than the background, so it is outside.
+    inside_value = 0
+    outside_value = 255
+    label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
+    label_shape_filter.Execute( sitk.OtsuThreshold(image, inside_value, outside_value) )
+    bounding_box = label_shape_filter.GetBoundingBox(outside_value)
+    # The bounding box's first "dim" entries are the starting index and last "dim" entries the size
+    return (sitk.RegionOfInterest(image, bounding_box[int(len(bounding_box)/2):], bounding_box[0:int(len(bounding_box)/2)]), \
+            sitk.RegionOfInterest(mask, bounding_box[int(len(bounding_box)/2):], bounding_box[0:int(len(bounding_box)/2)]))
+
+# get standard reference domain
+
+# src: https://github.com/SimpleITK/ISBI2018_TUTORIAL/blob/master/python/03_data_augmentation.ipynb
+def get_reference_frame(objs):
+    img_data = [(o.GetSize(), o.GetSpacing()) for o,_ in objs]
+
+    dimension = 3 # 3D MRs
+    pixel_id = 2 # 16-bit signed integer
+
+    # Physical image size corresponds to the largest physical size in the training set, or any other arbitrary size.
+    reference_physical_size = np.zeros(dimension)
+
+    for img_sz, img_spc in img_data:
+        reference_physical_size[:] = [(sz-1)*spc if sz*spc>mx else mx \
+                                      for sz, spc, mx in zip(img_sz, img_spc, reference_physical_size)]
+
+    # Create the reference image with a zero origin, identity direction cosine matrix and dimension     
+    reference_origin = np.zeros(dimension)
+    reference_direction = np.identity(dimension).flatten()
+
+
+    # Isotropic (1,1,1) pixels
+    reference_spacing = np.ones(dimension)
+    reference_size = [int(phys_sz/(spc) + 1) for phys_sz,spc in zip(reference_physical_size, reference_spacing)]
+
+    # Set reference image attributes
+    reference_image = sitk.Image(reference_size, pixel_id)
+    reference_image.SetOrigin(reference_origin)
+    reference_image.SetSpacing(reference_spacing)
+    reference_image.SetDirection(reference_direction)
+
+    reference_center = np.array(reference_image.TransformContinuousIndexToPhysicalPoint(np.array(reference_image.GetSize())/2.0))
+    return reference_image, (reference_size, pixel_id, reference_origin, reference_spacing, reference_direction, reference_center)
+
+def get_reference_image(reference_frame):
+    reference_size, pixel_id, reference_origin, reference_spacing, reference_direction, reference_center = reference_frame
+    reference_image = sitk.Image(reference_size, pixel_id)
+    reference_image.SetOrigin(reference_origin)
+    reference_image.SetSpacing(reference_spacing)
+    reference_image.SetDirection(reference_direction)
+    return reference_image, reference_center
+
+def resample2reference(img, mask, reference_image, reference_center, interpolator = sitk.sitkLinear, default_intensity_value = 0.0, dimension=3):
     
+    # Define translation transform mapping origins from reference_image to the current img
+    transform = sitk.AffineTransform(dimension)
+    transform.SetMatrix(img.GetDirection())
+    transform.SetTranslation(np.array(img.GetOrigin()) - reference_image.GetOrigin())
     
+    # Modify the transformation to align the centers of the original and reference image instead of their origins.
+    centering_transform = sitk.TranslationTransform(dimension)
+    img_center = np.array(img.TransformContinuousIndexToPhysicalPoint(np.array(img.GetSize())/2.0))
+    centering_transform.SetOffset(np.array(transform.GetInverse().TransformPoint(img_center) - reference_center))
+    centered_transform = sitk.Transform(transform)
+    centered_transform.AddTransform(centering_transform)
     
+    return (sitk.Resample(o, reference_image, centered_transform, o_interp, default_intensity_value, o.GetPixelID()) \
+                for o, o_interp in ((img, interpolator), (mask, sitk.sitkNearestNeighbor)))
+                         
 # given folder name, return isotropic SITK obj of nii and segm obj
 def folder2objs_old(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_interpolator = sitk.sitkLinear, ras_adj = False):
     segm_path, file = train_data_dict[folder_name]

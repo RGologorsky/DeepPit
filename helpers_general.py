@@ -15,10 +15,12 @@ from operator import itemgetter
 from itertools import groupby
 
 # sitk obj and np array have different index conventions
-def sitk2np(obj): return np.swapaxes(sitk.GetArrayViewFromImage(obj), 0, 2)
+# deep copy
+def sitk2np(obj): return np.swapaxes(sitk.GetArrayFromImage(obj), 0, 2)
+def np2sitk(arr): return sitk.GetImageFromArray(np.swapaxes(arr, 0, 2))
 
 # numpy mask arr into sitk obj
-def np2sitk(mask_arr, sitk_image):
+def mask2sitk(mask_arr, sitk_image):
   # convert bool mask to int mask
   # swap axes for sitk
   obj = sitk.GetImageFromArray(np.swapaxes(mask_arr.astype(np.uint8), 0, 2))
@@ -39,6 +41,11 @@ def round_tuple(t, d=3): return tuple(round(x,d) for x in t)
 
 # returns range obj as list
 def lrange(a,b): return list(range(a,b))
+
+# applies function to list of values
+def lmap(fn, arr, unpack_input=False, unpack_output=False):
+    output = [fn(*o) for o in arr] if unpack_input else [fn(o) for o in arr]
+    return zip(*output) if unpack_output else output
 
 # see which slices contain ROI
 def get_roi_range(bin_mask_arr, axis):
