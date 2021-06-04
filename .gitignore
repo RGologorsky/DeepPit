@@ -3,6 +3,7 @@
 train_data/
 
 # ignore zip file
+samir_labels/
 samir_images-labelled.zip
 
 # ignore ipynb_checkpoints
