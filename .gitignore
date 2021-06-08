@@ -6,6 +6,10 @@ train_data/
 samir_labels/
 samir_images-labelled.zip
 
+# ignore saved models
+models/
+*.pth
+
 # ignore ipynb_checkpoints
 .ipynb_checkpoints
 

@@ -104,15 +104,29 @@ def get_viz_arr(np_arr, slices, fixed_axis, bin_mask_arr, bin_mask_arr2, \
     
   # rescale RGB; 0-255, uint8 to save memory
   return rgb_scale(np_arr)
-    
+
+# https://stackoverflow.com/questions/14822184/is-there-a-ceiling-equivalent-of-operator-in-python
+def ceildiv(a, b): return -(-a // b)
+
 # viz slices from a single axis, w/ optional mask overlay
 # np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None, **kwargs
 def viz_axis(**kwargs):
-    n_slices = len(kwargs["slices"])
+    
+    # set default nrows, ncols = grid
+    if "grid" in kwargs:
+        grid = kwargs["grid"]
+        nrows, ncols = grid    
+    else:
+        # set default number of cols
+        ncols = kwargs.get("ncols", len(kwargs["slices"]))
+       
+        # set default number of rows
+        n_per_row = [len(kwargs[k]) for k in kwargs.keys() if k.startswith("slices")]
+        n_per_row = [ceildiv(n,ncols) for n in n_per_row]
+        nrows = sum(n_per_row)
     
     # set default options if not given
     fig_options = {
-        "grid": (1, n_slices),
         "wspace": 0.0,
         "hspace": 0.0,
         "fig_mult": 1,
@@ -139,9 +153,7 @@ def viz_axis(**kwargs):
     options.update(kwargs)
     
     # from SO: https://stackoverflow.com/questions/41071947/how-to-remove-the-space-between-subplots-in-matplotlib-pyplot
-    fig_mult     = options["fig_mult"]
-    nrows, ncols = options["grid"]
-    
+    fig_mult = options["fig_mult"]    
     fig = plt.figure(figsize=(fig_mult*(ncols+1), fig_mult*(nrows+1))) 
     gs  = gridspec.GridSpec(nrows, ncols,
     wspace=options["wspace"], hspace=options["hspace"], 
@@ -170,15 +182,16 @@ def viz_axis(**kwargs):
             axis_fn    = options.get("axis_fn"    + suffix, options["axis_fn"])
             slices     = options.get("slices"     + suffix, options["slices"])
             fixed_axis = options.get("fixed_axis" + suffix, options["fixed_axis"])
+            
+            title      = options.get("title"      + suffix, f"{np_arr_count}")
 
-            np_nrows = len(slices)//ncols
+            np_nrows = ceildiv(len(slices), ncols)
 
             # plot each slice idx
             index = 0                           
             for row in range(np_nrows):
                 for col in range(ncols):
                     ax = plt.subplot(gs[nrows_offset + row,col])
-                    ax.set_title(f"Slice {slices[index]} (#{np_arr_count})")
 
                     # show ticks only on 1st im
                     if index != 0:
@@ -186,10 +199,12 @@ def viz_axis(**kwargs):
                         ax.set_yticks([])
 
                     # in case slices in grid > n_slices
-                    if index < n_slices: 
+                    if index < len(slices): 
                         ax.imshow(axis_fn(np.take(np_arr, index, fixed_axis)), cmap=options["cmap0"])
+                        ax.set_title(f"Slice {slices[index]} ({title})")
                     else: 
                         ax.imshow(np.full((1,1,3), 255)) # show default white image of size 1x1
+                        ax.set_title(f"NA")
 
                     index += 1
             nrows_offset += np_nrows

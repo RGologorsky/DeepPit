@@ -26,16 +26,20 @@ from helpers_general import mask2sitk, sitk2np
 # segmentation
 from scipy.spatial   import Delaunay
 
+def test(): print("hi")
+    
+# given paths, return isotropic SITK obj of nii and segm obj
+def paths2objs(mr_path, segm_path, ras_adj = False):
+    mr         = sitk.ReadImage(mr_path, sitk.sitkFloat32)
+    segm       = meshio.read(segm_path)
+    mask_arr   = seg2mask(mr, segm, ras_adj)
+    
+    return mr, mask2sitk(mask_arr, mr)
+
 # given folder name, return isotropic SITK obj of nii and segm obj
 def folder2objs(folder_name, train_data_dict, ras_adj = False):
     segm_path, file = train_data_dict[folder_name]
-
-    # compile MR obj from nii file using Simple ITK reader
-    obj        = sitk.ReadImage(file, sitk.sitkFloat32)
-    segm       = meshio.read(segm_path)
-    mask_arr   = seg2mask(obj, segm, ras_adj)
-    
-    return obj, mask2sitk(mask_arr, obj)
+    folder2objs(segm_path, file)
 
 # Convert segmentation object to numpy binary mask
 # 1. Get affine matrix in SITK (aff tfm: idx coord => physical space coord)
@@ -98,7 +102,7 @@ def get_data_dict(train_path):
       folder1_path = os.path.join(mp_path, os.listdir(mp_path)[0])
       folder2_path = os.path.join(folder1_path, os.listdir(folder1_path)[0])
       nii_path     = glob.glob(f"{folder2_path}/*.nii")[0] #os.path.join(folder2_path, os.listdir(folder2_path)[0])
-      train_data_dict[folder] = (segm_obj_path, nii_path)
+      train_data_dict[folder] = (nii_path, segm_obj_path) #(segm_obj_path, nii_path)
     return train_data_dict
 
 # # given folder name, return isotropic SITK obj of nii and segm obj
