@@ -3,7 +3,7 @@
 
 # # Goal
 # 
-# The goal of this notebook is to train a 3d UNET segmentation model to output binary mask representing the sella turcica ROI.
+# This notebook is converted to .py for the purpose of *distributed* train a 3d UNET segmentation model to output binary mask representing the sella turcica ROI.
 # 
 # Notes:
 # - With gratitude to https://github.com/kbressem/faimed3d/blob/main/examples/3d_segmentation.md
