@@ -10,6 +10,9 @@ samir_images-labelled.zip
 models/
 *.pth
 
+# ignore saved test sets
+model_test_sets/
+
 # ignore ipynb_checkpoints
 .ipynb_checkpoints
 
