@@ -8,8 +8,8 @@
 import numpy     as np
 import SimpleITK as sitk
 
-from helpers_general import sitk2np, np2sitk
-from helpers_preprocess import mask2bbox
+from .general import sitk2np, np2sitk
+from .preprocess import mask2bbox
 
 # https://github.com/SuperElastix/elastix/blob/522843d90ff586be051c480514cd14a88db45dbf/src/Core/Main/elxParameterObject.cxx#L260-L362
 def get_parameter_map(transformName = "affine"):

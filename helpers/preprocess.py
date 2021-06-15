@@ -21,7 +21,7 @@ import meshio
 # numpy to SITK conversion
 import numpy     as np
 import SimpleITK as sitk
-from helpers_general import mask2sitk, sitk2np
+from .general import mask2sitk, sitk2np
 
 # segmentation
 from scipy.spatial   import Delaunay
