@@ -32,7 +32,8 @@ class Iso(ItemTransform):
         # get sitk objs
         im_path, segm_path = x
         mr = sitk.ReadImage(im_path, sitk.sitkFloat32)
-        im = torch.swapaxes(torch.tensor(sitk.GetArrayFromImage(mr)), 0, 2)
+        im = torch.transpose(torch.tensor(sitk.GetArrayFromImage(mr)), 0, 2)
+        # im = torch.swapaxes(torch.tensor(sitk.GetArrayFromImage(mr)), 0, 2)
         mk = torch.load(f"{str(Path(segm_path).parent)}/seg.pt").float()
 
         # resize so isotropic spacing
