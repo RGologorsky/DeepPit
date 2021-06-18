@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python
 # coding: utf-8
 
 # In[28]:
@@ -11,13 +11,23 @@ subset_size = 330
 
 
 test_pct  = 1 - float(subset_size)/335
-bs        = 2
-nepochs   = 50
-num_workers = 1
+bs        = 20
+nepochs   = 5
+num_workers = 20
 
 iso       = 3
 maxs      = [87, 90, 90]
 
+
+# In[ ]:
+
+
+import os
+import torch
+
+gpu_count = torch.cuda.device_count()
+cpu_count = os.cpu_count()
+print("#GPU = {0:d}, #CPU = {1:d}".format(gpu_count, cpu_count))
 
 
 # # Goal
@@ -253,6 +263,12 @@ with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as
 # pad_tls[0][0].shape, pad_tls[1][0].shape
 
 
+# In[ ]:
+
+
+
+
+
 # # Dataloaders
 # 
 # TODO augmentations.
@@ -479,6 +495,12 @@ with learn.distrib_ctx():
 # learn.save('iso_3mm_pad_87_90_90_subset_50_epochs_50')
 
 
+# In[ ]:
+
+
+
+
+
 # In[72]:
 
 
@@ -491,6 +513,18 @@ with learn.distrib_ctx():
 # print("unfreeze, learn 50")
 # learn.unfreeze()
 # learn.fit_one_cycle(50, 1e-3, wd = 1e-4)
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
 
 
 # In[137]:
