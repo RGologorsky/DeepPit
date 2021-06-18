@@ -2,7 +2,7 @@
 # Can run from cmd line like so: "docker build -t nvcr.io/nvidia/pytorch:21.03-py3 -f Dockerfile ."
 # To run: docker run --gpus all -it --rm -v /home/gologr01/Desktop/DeepPit/:/home -p 6006:6006 nvcr.io/nvidia/pytorch:21.03-py3 
 
-ARG BASE_CONTAINER=nvcr.io/nvidia/pytorch:21.03-py3
+ARG BASE_CONTAINER=nvcr.io/nvidia/pytorch:19.06-py3
 FROM $BASE_CONTAINER
 
 # To enable Jupyterlab
@@ -19,7 +19,6 @@ RUN pip install --no-cache-dir \
     'fastai' \
     'jupyter'
 
-RUN pip install --no-cache-dir torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
 # WORKDIR "../home"
 
 # docker run --gpus all -it --rm -v /home/gologr01/Desktop/DeepPit/:/home -p 8888:8888 nvcr.io/nvidia/pytorch:21.03-py3
