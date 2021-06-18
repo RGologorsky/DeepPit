@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir \
     'fastai' \
     'jupyter'
 
-RUN pip install --no-cache-dir torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+# RUN pip install --no-cache-dir torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
 # WORKDIR "../home"
 
 # docker run --gpus all -it --rm -v /home/gologr01/Desktop/DeepPit/:/home -p 8888:8888 nvcr.io/nvidia/pytorch:21.03-py3
