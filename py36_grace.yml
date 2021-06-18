@@ -1,0 +1,17 @@
+name: py36_grace
+channels:
+  - defaults
+dependencies:
+  - cudatoolkit=10.1
+  - torchvision==0.8.2
+  - torchaudio==0.7.2
+  - pytorch==1.7.1
+  - simpleitk
+  - meshio
+  - gputil
+  - pandas
+  - fastai
+  - pyzmq
+  - notebook
+  - jupyter_contrib_nbextensions
+
