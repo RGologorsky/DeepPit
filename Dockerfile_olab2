@@ -2,7 +2,7 @@
 # Can run from cmd line like so: "docker build -t nvcr.io/nvidia/pytorch:21.03-py3 -f Dockerfile ."
 # To run: docker run --gpus all -it --rm -v /home/gologr01/Desktop/DeepPit/:/home -p 6006:6006 nvcr.io/nvidia/pytorch:21.03-py3 
 
-ARG BASE_CONTAINER=nvcr.io/nvidia/pytorch:19.06-py3
+ARG BASE_CONTAINER=nvcr.io/nvidia/pytorch:21.03-py3
 FROM $BASE_CONTAINER
 
 # To enable Jupyterlab
