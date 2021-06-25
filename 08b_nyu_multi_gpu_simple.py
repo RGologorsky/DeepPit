@@ -1,26 +1,26 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[28]:
+# In[1]:
 
 
-subset_size = 330
+# DATALOADER PARAMS
+bs          = 20
+nepochs     = 30
+num_workers = 2
 
-
-# In[29]:
-
-
-test_pct  = 1 - float(subset_size)/335
-bs        = 20
-nepochs   = 5
-num_workers = 20
-
+# PREPROCESS (Isotropic, PadResize)
 iso       = 3
 maxs      = [87, 90, 90]
 
+# Train:Valid:Test = 60:20:20
+train_pct, valid_pct, test_pct = .60, .20, .20
 
-# In[ ]:
 
+# In[2]:
+
+
+# CHECK HARDWARE 
 
 import os
 import torch
@@ -32,18 +32,43 @@ print("#GPU = {0:d}, #CPU = {1:d}".format(gpu_count, cpu_count))
 
 # # Goal
 # 
-# This notebook is converted to .py for the purpose of training a **hybrid OBELISK-NET/UNET** segmentation model. A key concern is **memory usage**, i.e. tuning the batch size and presize HWD dimensions.
-# 
-# - TODO: Preprocess: Smooth, intensity norm (N4 bias, hist bin matching)
-# - TODO Augmentations: flip, orientation, 10 deg
-# 
-# **With gratitude to**:
-# - https://github.com/mattiaspaul/OBELISK
-# -  https://github.com/kbressem/faimed3d/blob/main/examples/3d_segmentation.md
+# Train hybrid OBELISK-NET/UNET. Tune batch size and presize HWD dimensions.
+# - Preprocess: Smooth, intensity norm (N4 bias, hist bin matching)
+# - Augmentations: flip, orientation, 10 deg
+# - Thanks to: OBELISK, FAIMED3D
+#     - https://github.com/mattiaspaul/OBELISK
+#     -  https://github.com/kbressem/faimed3d/blob/main/examples/3d_segmentation.md
+
+# # Paths
+
+# In[35]:
+
+
+import os
+
+# Paths to (1) code (2) data (3) saved models
+code_src    = "/gpfs/home/gologr01"
+data_src    = "/gpfs/data/oermannlab/private_data/DeepPit/PitMRdata"
+model_src   = "/gpfs/data/oermannlab/private_data/DeepPit/saved_models"
+
+# UMich 
+# code src: "/home/labcomputer/Desktop/Rachel"
+# data src: "../../../../..//media/labcomputer/e33f6fe0-5ede-4be4-b1f2-5168b7903c7a/home/rachel/"
+
+deepPit_src = f"{code_src}/DeepPit"
+obelisk_src = f"{code_src}/OBELISK"
+label_src   = f"{data_src}/samir_labels"
+ABIDE_src   = f"{data_src}/ABIDE"
+
+# print
+print("Folders in data src: ", end=""); print(*os.listdir(data_src), sep=", ")
+print("Folders in label src (data w labels): ", end=""); print(*os.listdir(label_src), sep=", ")
+print("Folders in ABIDE src (data wo labels) ", end=""); print(*os.listdir(ABIDE_src), sep=", ")
+
 
 # # Imports
 
-# In[30]:
+# In[36]:
 
 
 # imports
@@ -51,22 +76,10 @@ from transforms import AddChannel, Iso, PadSz
 
 # Utilities
 import os
+import sys
 import time
 import pickle
 from pathlib import Path
-
-# Fastai
-from fastai import *
-from fastai.torch_basics import *
-from fastai.basics import *
-
-# PyTorch
-from torchvision.models.video import r3d_18
-from fastai.callback.all import SaveModelCallback
-from torch import nn
-
-# 3D extension to FastAI
-# from faimed3d.all import *
 
 # Input IO
 import SimpleITK as sitk
@@ -77,130 +90,107 @@ import numpy as np
 import pandas as pd
 from pandas import DataFrame as DF
 
+# Fastai + distributed training
+from fastai import *
+from fastai.torch_basics import *
+from fastai.basics import *
+from fastai.distributed import *
+
+# PyTorch
+from torchvision.models.video import r3d_18
+from fastai.callback.all import SaveModelCallback
+from torch import nn
+
+# Obelisk
+sys.path.append(deepPit_src)
+sys.path.append(obelisk_src)
+
+# OBELISK
+from utils import *
+
+# 3D extension to FastAI
+# from faimed3d.all import *
+
 # Helper functions
 from helpers.preprocess import get_data_dict, paths2objs, folder2objs, seg2mask, mask2bbox, print_bbox, get_bbox_size, print_bbox_size
 from helpers.general import sitk2np, np2sitk, print_sitk_info, round_tuple, lrange, lmap, get_roi_range, numbers2groups
 from helpers.viz import viz_axis
 
 
-# # Distributed Training
-
-# In[31]:
-
-
-from fastai.distributed import *
-# import argparse
-# parser = argparse.ArgumentParser()
-# parser.add_argument("--local_rank", type=int)
-# args = parser.parse_args()
-# torch.cuda.set_device(args.local_rank)
-# torch.distributed.init_process_group(backend='nccl', init_method='env://')
-
-
 # # Data
 
-# 1. Source = path to labels (segmentation)
-# 2. data dict[foldername] = (path to MR, path to Segm tensor)
-#     
-# Special subsets:
-# 1. *training*: small subset of all labelled items (quick epoch w/ 100 instead of 335 items).
-# 2. *unique*: subset of items with unique size, spacing, and orientation (quickly evaluate resize vs. istropic)
+# ## Paths
 
-# In[32]:
+# ## Items 
+
+# In[7]:
 
 
-import time
-model_time = time.ctime() # 'Mon Oct 18 13:35:29 2010'
-print(f"Time: {model_time}")
-
-
-# In[33]:
-
-
-# cognizant of diff file paths
-todd_prefix = "../../../../..//media/labcomputer/e33f6fe0-5ede-4be4-b1f2-5168b7903c7a/home/rachel/"
-olab_prefix = "/gpfs/data/oermannlab/private_data/DeepPit/"
-
-home_prefix = "/gpfs/home/gologr01/DeepPit/"
-
-
-# In[34]:
-
-
-# process for new prefix
-def change_prefix(fn, old_prefix=todd_prefix, new_prefix=olab_prefix):
-    return new_prefix + fn[len(old_prefix):]
-
-# Get path to my data on 4 TB HD
-hd  = "/gpfs/data/oermannlab/private_data/DeepPit/PitMRdata"
-src = hd
-
-# labelled train data
-train_src = src + "/samir_labels"
-
-# print
-print("Folders in source path: ", end=""); print(*os.listdir(src), sep=", ")
-print("Folders in train path: ", end=""); print(*os.listdir(train_src), sep=", ")
-
-# get data
+# Get data dict
 data = {}
-folders = os.listdir(train_src)
-for folder in folders: data.update(get_data_dict(f"{train_src}/{folder}"))
+folders = os.listdir(label_src)
+for folder in folders: data.update(get_data_dict(f"{label_src}/{folder}"))
 
-# all items
+# Convert data dict => items (path to MR, path to Segm tensor)
 items = list(data.values())
 
-# MR files: unique sz, sp, dir
-with open(home_prefix + 'saved_metadata/unique_sz_sp_dir.pkl', 'rb') as f:
-    unique = pickle.load(f)
+# Split train/valid/test split
+train_idxs, test_idxs = RandomSplitter(valid_pct=test_pct)(items)
+train_items = [items[i] for i in train_idxs]
+test_items  = [items[i] for i in test_idxs]
 
-# Create (MR path, Segm path) item from MR path
-def get_folder_name(s):
-    start = s.index("samir_labels/")
-    s = s[start + len("samir_labels/50373-50453/"):]
-    return s[0:s.index("/")]
-
-# get unique
-unique = [(change_prefix(mr), data[get_folder_name(mr)][1]) for mr in unique]
-
-# subset
-subset_idxs, test_idxs = RandomSplitter(valid_pct=test_pct)(items)
-subset = [items[i] for i in subset_idxs]
-test   = [items[i] for i in test_idxs]
+train_idxs, valid_idxs = RandomSplitter(valid_pct=valid_pct)(train_items)
+train_items = [items[i] for i in train_idxs]
+valid_items = [items[i] for i in valid_idxs]
 
 # print
 print(f"Total {len(items)} items in dataset.")
-print(f"Training subset of {len(subset)} items.")
-print(f"Test subset of {len(test)} items.")
+print(f"Train: {len(train_items)} items.")
+print(f"Valid: {len(valid_items)} items.")
+print(f"Test: {len(test_items)} items.")
 
-# model name
-model_name = f"iso_{iso}mm_pad_{maxs[0]}_{maxs[1]}_{maxs[2]}_bs_{bs}_subset_{len(subset)}_epochs_{nepochs}_time_{model_time}"
+# Save test idxs
+
+# file name
+model_time = time.ctime() # 'Mon Oct 18 13:35:29 2010'
+model_name = f"iso_{iso}mm_pad_{maxs[0]}_{maxs[1]}_{maxs[2]}_bs_{bs}_test_sz_{len(test_items)}_epochs_{nepochs}_time_{model_time}"
 print(f"Model name: {model_name}")
 
 # save test set indices
-with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as f:
-    pickle.dump(list(test), f)
-    
-# print
-print(f"Total {len(items)} items in dataset.")
-print(f"Training subset of {len(subset)} items.")
-print(f"Unique subset of {len(unique)} items.")
+with open(f"{model_src}/{model_name}_test_items.pkl", 'wb') as f:
+    pickle.dump(list(test_items), f)
 
 
 # In[8]:
 
 
-# model name
-model_name = f"iso_3mm_pad_87_90_90_bs_{bs}_subset_{len(subset)}_epochs_{nepochs}_time_{model_time}"
-print(f"Model name: {model_name}"),
+# with open(f"{model_src}/{model_name}_test_items.pkl", 'rb') as f:
+#     check_test_items = pickle.load(f)
+#     print(check_test_items==test_items)
+#     print(check_test_items[0])
 
-# save test set indices\n",
-with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as f:
-    pickle.dump(list(test), f)
-      
-# with open(f"model_test_sets/{model_name}_test_items.pkl", 'rb') as f:
-#     test = pickle.load(f)
-# print(test[0]), print(len(test))
+
+# In[37]:
+
+
+# # unique, for rapid prototyping
+
+# # MR files: unique sz, sp, dir
+# with open(f'{deepPit_src}/saved_metadata/unique_sz_sp_dir.pkl', 'rb') as f:
+#     unique = pickle.load(f)
+
+# # Create (MR path, Segm path) item from MR path
+# def get_folder_name(s):
+#     start = s.index("samir_labels/")
+#     s = s[start + len("samir_labels/50373-50453/"):]
+#     return s[0:s.index("/")]
+
+# def change_prefix(s):
+#     start = s.index("samir_labels/")
+#     return f"{label_src}/{s[start+len('samir_labels/'):]}"
+
+# # get unique
+# unique = [(change_prefix(mr), data[get_folder_name(mr)][1]) for mr in unique]
 
 
 # # Transforms
@@ -208,7 +198,7 @@ with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as
 # 1. Isotropic 3mm or Resize to 50x50x50 dimensions
 # 2. Crop/Pad to common dimensions
 
-# In[9]:
+# In[30]:
 
 
 # # test
@@ -223,7 +213,7 @@ with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as
 # print(f"Elapsed: {elapsed} s for {len(unique)} items.")
 
 
-# In[10]:
+# In[31]:
 
 
 # start = time.time()
@@ -233,13 +223,13 @@ with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as
 # print(f"Elapsed: {elapsed} s for {len(unique)} items.")
 
 
-# In[11]:
+# In[32]:
 
 
 # print(*[f"{get_folder_name(mr)}: {tuple(sz)}" for (mr,mk),sz in zip(unique, iso_szs)], sep="\n")
 
 
-# In[12]:
+# In[33]:
 
 
 # maxs = [int(x) for x in torch.max(torch.tensor(iso_szs), dim=0).values]
@@ -248,7 +238,7 @@ with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as
 
 # # Crop
 
-# In[13]:
+# In[34]:
 
 
 # # test
@@ -277,21 +267,21 @@ with open(home_prefix + f'model_test_sets/{model_name}_test_items.pkl', 'wb') as
 # - splits into training/valid
 # - bs
 
-# In[14]:
+# In[46]:
 
 
 # time it
 start = time.time()
 
 # splits
-splits = RandomSplitter(seed=42)(subset)
-print(f"Training: {len(splits[0])}, Valid: {len(splits[1])}")
+#splits = RandomSplitter(seed=42)(subset)
+#print(f"Training: {len(splits[0])}, Valid: {len(splits[1])}")
 
 # tfms
 tfms = [Iso(3), PadSz(maxs)]
 
 # tls
-tls = TfmdLists(items, tfms, splits=splits)
+tls = TfmdLists(items, tfms, splits=(train_idxs, valid_idxs))
 
 # dls
 dls = tls.dataloaders(bs=bs, after_batch=AddChannel(), num_workers=num_workers)
@@ -301,7 +291,7 @@ dls = dls.cuda()
 
 # end timer
 elapsed = time.time() - start
-print(f"Elapsed time: {elapsed} s for {len(subset)} items")
+print(f"Elapsed time: {elapsed} s for {len(train_idxs) + len(valid_idxs)} items")
 
 # test get one batch
 b = dls.one_batch()
@@ -313,7 +303,7 @@ print(len(dls.train), len(dls.valid))
 # 
 # Linear combination of Dice and Cross Entropy
 
-# In[15]:
+# In[ ]:
 
 
 def dice(input, target):
@@ -333,20 +323,7 @@ def loss(input, target):
     return dice_loss(input, target) + nn.CrossEntropyLoss()(input, target[:, 0])
 
 
-# ## OBELISK
-
-# In[16]:
-
-
-import sys
-sys.path.append('/gpfs/home/gologr01/DeepPit')
-sys.path.append('/gpfs/home/gologr01/OBELISK')
-
-# OBELISK
-from utils import *
-
-
-# In[17]:
+# In[ ]:
 
 
 # start = time.time()
@@ -359,7 +336,7 @@ from utils import *
 # print(f"Elapsed time: {elapsed} s for {len(segs)} items")
 
 
-# In[18]:
+# In[ ]:
 
 
 # class_weight = torch.sqrt(1.0/(torch.bincount(segs.view(-1)).float()))
@@ -369,13 +346,13 @@ from utils import *
 # print('inv sqrt class_weight',class_weight.data.cpu().numpy())
 
 
-# In[19]:
+# In[ ]:
 
 
 from utils import my_ohem
 
 
-# In[20]:
+# In[ ]:
 
 
 # pos_weight = torch.load("saved_metadata/class_weights.pt")
@@ -386,13 +363,13 @@ from utils import my_ohem
 # my_criterion = my_ohem(.25,[0, pos_weight]) #.cuda())#0.25 
 
 
-# In[21]:
+# In[ ]:
 
 
 def obelisk_loss_fn(predict, target): return my_criterion(F.log_softmax(predict,dim=1),target)
 
 
-# In[22]:
+# In[ ]:
 
 
 # ipython nbconvert --to python  '6 - Dataloaders- NB - Simple-Copy1.ipynb'
@@ -400,7 +377,7 @@ def obelisk_loss_fn(predict, target): return my_criterion(F.log_softmax(predict,
 
 # # Learner
 
-# In[23]:
+# In[ ]:
 
 
 import gc
@@ -410,21 +387,21 @@ gc.collect()
 torch.cuda.empty_cache()
 
 
-# In[24]:
+# In[38]:
 
 
 # OBELISK-NET from github
 from models import obelisk_visceral, obeliskhybrid_visceral
 
 
-# In[25]:
+# In[ ]:
 
 
 full_res = maxs
 
 learn = Learner(dls=dls,                 model=obeliskhybrid_visceral(num_labels=2, full_res=full_res),                 loss_func= loss, #DiceLoss(), #nn.CrossEntropyLoss(), \
                 metrics = dice_score, \
-                model_dir = home_prefix + "models", \
+                model_dir = model_src, \
                 cbs = [SaveModelCallback(monitor='dice_score', fname=model_name, with_opt=True)])
 
 # SaveModelCallback: model_dir = "./models", cbs = [SaveModelCallback(monitor='dice_score')]
@@ -435,7 +412,7 @@ learn.model = learn.model.cuda()
 #learn = learn.to_distributed(args.local_rank)
 
 
-# In[26]:
+# In[ ]:
 
 
 # # test:
@@ -466,13 +443,13 @@ learn.model = learn.model.cuda()
 
 # # LR Finder
 
-# In[27]:
+# In[ ]:
 
 
 # learn.lr_find()
 
 
-# In[82]:
+# In[ ]:
 
 
 print("PRE learn.fit one cycle")
@@ -480,7 +457,7 @@ with learn.distrib_ctx():
     learn.fit_one_cycle(1, 3e-3, wd = 1e-4)
 
 
-# In[83]:
+# In[ ]:
 
 
 print("unfreeze, learn 50")
@@ -489,7 +466,7 @@ with learn.distrib_ctx():
     learn.fit_one_cycle(nepochs, 3e-3, wd = 1e-4)
 
 
-# In[86]:
+# In[ ]:
 
 
 # learn.save('iso_3mm_pad_87_90_90_subset_50_epochs_50')
@@ -501,7 +478,7 @@ with learn.distrib_ctx():
 
 
 
-# In[72]:
+# In[ ]:
 
 
 # learn.lr_find()
@@ -527,7 +504,7 @@ with learn.distrib_ctx():
 
 
 
-# In[137]:
+# In[ ]:
 
 
 # testmask = torch.tensor([[[False, False, False], [False, False, False], [True, True, True]],
@@ -536,14 +513,14 @@ with learn.distrib_ctx():
 # testmask
 
 
-# In[138]:
+# In[ ]:
 
 
 # testmaskN = np.array(testmask)
 # testmaskN
 
 
-# In[139]:
+# In[ ]:
 
 
 # maskT = testmask.type(torch.BoolTensor)
@@ -557,7 +534,7 @@ with learn.distrib_ctx():
 # kminT, kmaxT = torch.where(kT)[0][[0, -1]]
 
 
-# In[140]:
+# In[ ]:
 
 
 # maskN = np.array(testmask).astype(bool)
@@ -571,13 +548,13 @@ with learn.distrib_ctx():
 # kminN, kmaxN = np.where(kN)[0][[0, -1]]
 
 
-# In[141]:
+# In[ ]:
 
 
 # maskT.shape, maskN.shape
 
 
-# In[142]:
+# In[ ]:
 
 
 # print(iT)
@@ -586,7 +563,7 @@ with learn.distrib_ctx():
 # print([x for x in (iminT, imaxT, jminT, jmaxT, kminT, kmaxT)])
 
 
-# In[143]:
+# In[ ]:
 
 
 # print(iN)
