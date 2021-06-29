@@ -7,7 +7,7 @@
 #  5. mask2bbox / print bbox
 #  6. crop thershold
 #  7. resample2reference
-#
+#  
 
 # load data
 import os
@@ -90,6 +90,26 @@ def get_isotropic(obj, new_spacing = (1,1,1), interpolator=sitk.sitkLinear):
                          obj.GetOrigin(), new_spacing, obj.GetDirection(), 0,
                          obj.GetPixelID())
 
+# make a dictionary of key = train folder, value = (segm obj, nii file)
+def get_data_dict_n4(train_path):
+    train_folders   = os.listdir(train_path)
+    train_data_dict = {}
+    for folder in train_folders:
+        segm_obj_path = os.path.join(train_path, folder, "seg.pt")
+
+        mp_path      = os.path.join(train_path, folder, "MP-RAGE")
+        folder1_path = os.path.join(mp_path, os.listdir(mp_path)[0])
+        folder2_path = os.path.join(folder1_path, os.listdir(folder1_path)[0])
+
+        # choose corrected_n4 if available
+        nii_paths = glob.glob(f"{folder2_path}/*.nii")
+        nii_path = nii_paths[0]
+         
+        if len(nii_paths) > 1 and not nii_path.endswith("corrected_n4.nii"):
+            nii_path = nii_paths[1]
+            
+        train_data_dict[folder] = (nii_path, segm_obj_path) #(segm_obj_path, nii_path)
+    return train_data_dict
 
 # make a dictionary of key = train folder, value = (segm obj, nii file)
 def get_data_dict(train_path):

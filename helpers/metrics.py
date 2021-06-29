@@ -1,10 +1,33 @@
 # Metrics Helper fns
+# From: FAIMED3D and https://github.com/shruti-jadon/Semantic-Segmentation-Loss-Functions/blob/master/loss_functions.py
 #
-#  1. compute dice coeff
-#  2. compute coverage coeff
+#  1. NP: compute dice coeff, compute coverage coeff
+#  2. Torch: Dice, Dice Score, Dice Loss, DiceCE, log_cosh_dice_loss
 
 import numpy as np
+import torch
 
+def dice(input, target):
+    iflat = input.contiguous().view(-1)
+    tflat = target.contiguous().view(-1)
+    intersection = (iflat * tflat).sum()
+    return ((2. * intersection) /
+           (iflat.sum() + tflat.sum()))
+
+def dice_score(input, target):
+    return dice(input.argmax(1), target)
+
+def dice_loss(input, target): 
+    return 1 - dice(input.softmax(1)[:, 1], target)
+
+def dice_ce_loss(input, target):
+    return dice_loss(input, target) + nn.CrossEntropyLoss()(input, target[:, 0])
+
+# from https://github.com/shruti-jadon/Semantic-Segmentation-Loss-Functions/blob/master/loss_functions.py
+def log_cosh_dice_loss(input, target):
+        x = dice_loss(input, target)
+        return torch.log((torch.exp(x) + torch.exp(-x)) / 2.0)
+    
 # Metrics
 # Source: https://www.programcreek.com/python/?CodeExample=compute+dice
 def compute_dice_coefficient(mask_gt, mask_pred):

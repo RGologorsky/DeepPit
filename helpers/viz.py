@@ -1,4 +1,8 @@
+# vix_axis, viz_bbox(mr, seg, pred)
+from helpers.preprocess import mask2bbox, print_bbox
+
 # numpy and SITK
+import torch
 import numpy as np
 import SimpleITK as sitk
 
@@ -210,6 +214,57 @@ def viz_axis(**kwargs):
             nrows_offset += np_nrows
     plt.show()
     # return plt
+
+def bbox_union(bbox1, bbox2):
+    l1 = [min(bbox1[i], bbox2[i]) for i in (0, 2, 4)]
+    l2 = [max(bbox1[i], bbox2[i]) for i in (1, 3, 5)]    
+    return [val for pair in zip(l1, l2) for val in pair]
+
+# Viz
+def viz_bbox(mr, seg, pred):
+#     mr, seg = learn.dls.train_ds[idx] 
+#     pred = learn.predict(test_items[idx])[0]
+    
+    # dice (add B dimension)
+#     dice = dice_score(pred.unsqueeze(0), seg.unsqueeze(0).unsqueeze(0))
+#     print(f"Dice: {dice:0.4f}")
+    
+    # convert pred to mask
+    pred_mk   = torch.argmax(pred, dim=0)
+    pred_bbox = mask2bbox(np.array(pred_mk))
+
+    mr, seg = np.array(mr), np.array(seg)
+    gt_bbox = mask2bbox(mr)
+    
+    # union bbox
+    bbox = bbox_union(gt_bbox, pred_bbox)
+    
+    # print bbox
+    print("Pred: "); print_bbox(*pred_bbox)
+    print("GT: "); print_bbox(*gt_bbox)
+    print("Union: "); print_bbox(*bbox)
+          
+    # viz
+    viz_axis(np_arr = mr, \
+            bin_mask_arr   = seg,     color1 = "yellow",  alpha1=0.3, \
+            bin_mask_arr2  = pred_mk, color2 = "magenta", alpha2=0.3, \
+            slices=lrange(*bbox[0:2]), fixed_axis=0, \
+            axis_fn = np.rot90, \
+            title   = "Axis 0", \
+
+            np_arr_b = mr, \
+            bin_mask_arr_b   = seg,     color1_b = "yellow",  alpha1_b=0.3, \
+            bin_mask_arr2_b  = pred_mk, color2_b = "magenta", alpha2_b=0.3, \
+            slices_b = lrange(*bbox[2:4]), fixed_axis_b=1, \
+            title_b  = "Axis 1", \
+
+            np_arr_c = mr, \
+            bin_mask_arr_c   = seg,     color1_c = "yellow",  alpha1_c=0.3, \
+            bin_mask_arr2_c  = pred_mk, color2_c = "magenta", alpha2_c=0.3, \
+            slices_c = lrange(*bbox[4:6]), fixed_axis_c=2, \
+            title_c = "Axis 2", \
+  
+        ncols = 5, hspace=0.3, fig_mult=2)
 
 # viz slices from a single axis, w/ optional mask overlay
 def viz_get_np_arr(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None, crop_coords = None, crop_extra = 0):

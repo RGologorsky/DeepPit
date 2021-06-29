@@ -2,6 +2,8 @@
 
 # 1. Isotropic 3mm or Resize to 50x50x50 dimensions
 # 2. Crop/Pad to common dimensions
+# 3. Nyul-Udupa Piecewise Hist w/ max scaling
+# 4. MattAffineTfm
 
 # - Thanks to faimed3d
 
@@ -11,6 +13,8 @@ import SimpleITK as sitk
 import meshio
 
 from fastai.basics import *
+
+from helpers.nyul_udupa import piecewise_hist
 
 class Hi(Transform): pass
 
@@ -59,6 +63,67 @@ class PadSz(Transform):
         pad.reverse()
         
         return F.pad(arr, pad, mode='constant', value=0) 
+
+
+# NYUL-UDUPA, from helpers.nyul_udapa import piecewise hist
+
+# Transform: nyul udupa hist norm, max scale
+@patch
+def max_scale(t:torch.Tensor):
+    t = (t - t.min()) / (t.max() - t.min())
+    return t
+
+class PiecewiseHistScaling(ItemTransform):
+    """
+    Applies theNyul and Udupa histogram nomalization and rescales the pixel values.
+
+    Args:
+        input_image (TensorDicom3D): image on which to find landmarks
+        landmark_percs (torch.tensor): corresponding landmark points of standard scale
+        final_scale (function): final rescaling of values, if none is provided values are
+                                scaled to a mean of 0 and a std of 1.
+        slicewise (bool): if the scaling should be applied to each slice individually. Slower but leads to more homogeneous images.
+
+    Returns:
+        If input is TensorMask3D returns input unchanged
+        If input is TensorDicom3D returns normalized and rescaled Tensor
+
+    """
+    def __init__(self, landmark_percs=None, standard_scale=None, final_scale=None):
+        self.landmark_percs = landmark_percs
+        self.standard_scale = standard_scale
+        self.final_scale = final_scale
+
+    def encodes(self, item):
+        x,mk = item
+        x = x.piecewise_hist(self.landmark_percs, self.standard_scale)
+        x = x.clamp(min=0)
+        x = x.sqrt().max_scale() if self.final_scale is None else self.final_scale(x)
+        #return x
+        return x, mk
+        
+# from OBELISK mattiaspaul
+class MattAffineTfm(ItemTransform):
+    # split_idx: 0 for train, 1 for validation, None for both
+    split_idx,order = 0, 100
+    
+    def __init__(self, strength=0.05):
+        self.strength = strength
+        
+    # batches
+    def encodes(self, batch_items):
+        img_in, seg_in = batch_items
+        B,C,D,H,W = img_in.size()
+        affine_matrix = (torch.eye(3,4).unsqueeze(0) + torch.randn(B, 3, 4) * self.strength).to(img_in.device)
+        
+        meshgrid = F.affine_grid(affine_matrix,torch.Size((B,1,D,H,W)))
+
+        img_out = F.grid_sample(img_in, meshgrid,padding_mode='border')
+        seg_out = F.grid_sample(seg_in.float(), meshgrid, mode='nearest').long()
+
+        return img_out, seg_out
+        
+        
 # OLD
 
 # # crop center

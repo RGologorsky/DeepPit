@@ -7,7 +7,7 @@
 
 # # Imports
 
-# In[7]:
+# In[1]:
 
 
 import os
@@ -32,7 +32,7 @@ print("Folders in label src (data w labels): ", end=""); print(*os.listdir(label
 print("Folders in ABIDE src (data wo labels) ", end=""); print(*os.listdir(ABIDE_src), sep=", ")
 
 
-# In[12]:
+# In[2]:
 
 
 # imports
@@ -54,7 +54,7 @@ from helpers.preprocess import seg2mask, get_data_dict
 
 # # MR data
 
-# In[29]:
+# In[3]:
 
 
 def get_data_dict_n4(train_path):
@@ -81,14 +81,39 @@ def get_data_dict_n4(train_path):
     return train_data_dict
 
 
-# In[30]:
+# In[4]:
+
+
+def get_data_dict_no_n4(train_path):
+    train_folders   = os.listdir(train_path)
+    train_data_dict = {}
+    for folder in train_folders:
+        segm_obj_path = os.path.join(train_path, folder, "seg.pt")
+
+        mp_path      = os.path.join(train_path, folder, "MP-RAGE")
+        folder1_path = os.path.join(mp_path, os.listdir(mp_path)[0])
+        folder2_path = os.path.join(folder1_path, os.listdir(folder1_path)[0])
+
+        # choose NOT corrected_n4
+        nii_paths = glob.glob(f"{folder2_path}/*.nii")
+        
+        # get original .nii
+        for nii in nii_paths:
+            if not nii.endswith("corrected_n4.nii"):
+                nii_path = nii
+            
+        train_data_dict[folder] = (nii_path, segm_obj_path) #(segm_obj_path, nii_path)
+    return train_data_dict
+
+
+# In[5]:
 
 
 # Get data dict
 data = {}
 folders = os.listdir(label_src)
 for folder in folders: 
-    data.update(get_data_dict_n4(f"{label_src}/{folder}"))
+    data.update(get_data_dict_no_n4(f"{label_src}/{folder}"))
 
 # Convert data dict => items (path to MR, path to Segm tensor)
 items = list(data.values())
@@ -97,13 +122,13 @@ items = list(data.values())
 items_no_n4 = [item for item in items if not item[0].endswith("corrected_n4.nii")]
 
 
-# In[31]:
+# In[6]:
 
 
 print(len(items), len(items_no_n4), len(items)-len(items_no_n4))
 
 
-# In[15]:
+# In[7]:
 
 
 print(items[0][0])
@@ -112,7 +137,7 @@ print(items[0][0][:-4] + "_corrected_n4.nii")
 
 # # Process
 
-# In[36]:
+# In[8]:
 
 
 # from FAIMED3D 02_preprocessing
@@ -132,10 +157,13 @@ for mr_path, seg_path in items_no_n4:
     # Read in image
     inputImage = sitk.ReadImage(mr_path, sitk.sitkFloat32)
     
+    # Mask the head to estimate bias
+    maskImage = sitk.OtsuThreshold(inputImage, 0, 1, 200)
+    
     # Set corrector
     corrector = sitk.N4BiasFieldCorrectionImageFilter()
     corrector.SetMaximumNumberOfIterations([3] * 3)
-    corrected_image = corrector.Execute(inputImage) # mask_image
+    corrected_image = corrector.Execute(inputImage, maskImage)
 
     # write image
     corrected_fn = mr_path[:-4] + "_corrected_n4.nii"
