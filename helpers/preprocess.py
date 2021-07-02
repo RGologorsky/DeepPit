@@ -25,8 +25,6 @@ from .general import mask2sitk, sitk2np
 
 # segmentation
 from scipy.spatial   import Delaunay
-
-def test(): print("hi")
     
 # given paths, return isotropic SITK obj of nii and segm obj
 def paths2objs(mr_path, segm_path, ras_adj = False):
