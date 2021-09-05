@@ -1,3 +1,9 @@
+# viz fns
+# 1. viz_axis
+# 2. viz_compare_inputs
+# 3. viz_compare_outputs
+# 4. bbox_union
+
 # vix_axis, viz_bbox(mr, seg, pred)
 from helpers.preprocess import mask2bbox, print_bbox
 
@@ -10,6 +16,8 @@ import SimpleITK as sitk
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
+
+from helpers.general import lrange
 
 # identity "do nothing" function
 def id(x): return x
@@ -129,6 +137,7 @@ def viz_axis(**kwargs):
         n_per_row = [ceildiv(n,ncols) for n in n_per_row]
         nrows = sum(n_per_row)
     
+    print(nrows, ncols)
     # set default options if not given
     fig_options = {
         "wspace": 0.0,
@@ -153,7 +162,7 @@ def viz_axis(**kwargs):
     }
     
     # update kwargs last
-    options = {**fig_options, **img_options}
+    options = {**fig_options, **img_options, "save_src":None}
     options.update(kwargs)
     
     # from SO: https://stackoverflow.com/questions/41071947/how-to-remove-the-space-between-subplots-in-matplotlib-pyplot
@@ -201,18 +210,27 @@ def viz_axis(**kwargs):
                     if index != 0:
                         ax.set_xticks([])
                         ax.set_yticks([])
+                    # for everyone, can comment out
+                    ax.set_xticks([])
+                    ax.set_yticks([])
 
                     # in case slices in grid > n_slices
                     if index < len(slices): 
                         ax.imshow(axis_fn(np.take(np_arr, index, fixed_axis)), cmap=options["cmap0"])
-                        ax.set_title(f"Slice {slices[index]} ({title})")
+                        #ax.set_title(f"Slice {slices[index]} ({title})")
                     else: 
                         ax.imshow(np.full((1,1,3), 255)) # show default white image of size 1x1
-                        ax.set_title(f"NA")
+                        #ax.set_title(f"NA")
 
                     index += 1
             nrows_offset += np_nrows
-    plt.show()
+
+    if options["save_src"] is not None:
+        plt.savefig(options["save_src"], bbox_inches='tight', dpi = 1000)
+        #plt.show()
+        plt.close()
+    else:
+        plt.show()
     # return plt
 
 def bbox_union(bbox1, bbox2):
@@ -266,6 +284,131 @@ def viz_bbox(mr, seg, pred):
   
         ncols = 5, hspace=0.3, fig_mult=2)
 
+# viz
+
+def get_mid_idx(bbox, is_mask=False):
+    
+    if is_mask:
+        bbox = mask2bbox(bbox)
+       
+    axis_len = bbox[1] - bbox[0]
+    mid0     = bbox[0] + axis_len//2
+        
+    axis_len = bbox[3] - bbox[2]
+    mid1     = bbox[2] + axis_len//2
+
+    axis_len = bbox[5] - bbox[4]
+    mid2     = bbox[4] + axis_len//2
+
+    return mid0, mid1, mid2
+
+def get_mid_range(bbox, axis=0, nslices=5):
+    n_before = nslices//2
+    n_after  = nslices - n_before
+    
+    mid = get_mid_idx(bbox)[axis]
+
+    return mid-n_before, mid+n_after
+
+def viz_compare_inputs(input1, input2, axis=0, nslices=5):
+
+    mr1, seg1 = input1
+    mr2, seg2 = input2
+    
+    mr1, seg1 = np.array(mr1), np.array(seg1)
+    mr2, seg2 = np.array(mr2), np.array(seg2)
+    
+    bbox1 = mask2bbox(seg1)
+    bbox2 = mask2bbox(seg2)
+    
+    # print bbox
+    print("1: "); print_bbox(*bbox1)
+    print("2: "); print_bbox(*bbox2)
+
+    # viz 5 slices from the middle of first axis
+    start_idx1, end_idx1 = get_mid_range(bbox1, axis, nslices)
+    start_idx2, end_idx2 = get_mid_range(bbox2, axis, nslices)
+        
+    # viz
+    viz_axis(np_arr = mr1, \
+            bin_mask_arr   = seg1,     color1 = "yellow",  alpha1=0.3, \
+            slices=lrange(start_idx1, end_idx1), fixed_axis=axis, \
+            axis_fn = np.rot90, \
+            title   = f"Axis {axis} - inp 1", \
+
+            np_arr_b = mr2, \
+            bin_mask_arr_b   = seg2,     color1_b = "yellow",  alpha1_b=0.3, \
+            slices_b = lrange(start_idx2, end_idx2), fixed_axis_b=axis, \
+            title_b  = f"Axis {axis} - inp 2", \
+        ncols = 5, hspace=0.3, fig_mult=2)
+
+    
+# Viz
+def viz_compare_outputs(mr, seg, pred):
+    
+    # convert pred to mask
+    if len(pred) == 2:
+        pred_mk   = torch.argmax(pred, dim=0)
+    else:
+        pred_mk = pred
+        
+    pred_bbox = mask2bbox(np.array(pred_mk))
+
+    mr, seg = np.array(mr), np.array(seg)
+    gt_bbox = mask2bbox(seg)
+    
+    # union bbox
+    bbox = bbox_union(gt_bbox, pred_bbox)
+    
+    # print bbox
+    print("Pred: "); print_bbox(*pred_bbox)
+    print("GT: "); print_bbox(*gt_bbox)
+    print("Union: "); print_bbox(*bbox)
+          
+    # viz
+    viz_axis(np_arr = mr, \
+            bin_mask_arr   = seg,     color1 = "yellow",  alpha1=0.3, \
+            bin_mask_arr2  = pred_mk, color2 = "magenta", alpha2=0.3, \
+            slices=lrange(*bbox[0:2]), fixed_axis=0, \
+            axis_fn = np.rot90, \
+            title   = "Axis 0", \
+
+            np_arr_b = mr, \
+            bin_mask_arr_b   = seg,     color1_b = "yellow",  alpha1_b=0.3, \
+            bin_mask_arr2_b  = pred_mk, color2_b = "magenta", alpha2_b=0.3, \
+            slices_b = lrange(*bbox[2:4]), fixed_axis_b=1, \
+            title_b  = "Axis 1", \
+
+            np_arr_c = mr, \
+            bin_mask_arr_c   = seg,     color1_c = "yellow",  alpha1_c=0.3, \
+            bin_mask_arr2_c  = pred_mk, color2_c = "magenta", alpha2_c=0.3, \
+            slices_c = lrange(*bbox[4:6]), fixed_axis_c=2, \
+            title_c = "Axis 2", \
+  
+        ncols = 5, hspace=0.3, fig_mult=2) 
+
+# viz MR in axes, no pred
+def viz_orientation(mr):
+    mid0, mid1, mid2 = [sh//2 for sh in mr.shape]
+    
+     # viz
+    viz_axis(np_arr = mr, \
+            slices=lrange(mid0, mid0), fixed_axis=0, \
+            axis_fn = axis_fn0, \
+            title   = "Axis 0", \
+
+            np_arr_b = mr, \
+            slices_b = lrange(mid1, mid1), fixed_axis_b=1, \
+            axis_fn_b = axis_fn1,
+            title_b  = "Axis 1", \
+
+            np_arr_c = mr, \
+            slices_c = lrange(mid2, mid2), fixed_axis_c=2, \
+            axis_fn_c = axis_fn2, \
+            title_c = "Axis 2", \
+  
+        ncols = 5, hspace=0.3, fig_mult=2, save_src=save_src)
+    
 # viz slices from a single axis, w/ optional mask overlay
 def viz_get_np_arr(np_arr, slices, fixed_axis, bin_mask_arr=None, bin_mask_arr2 = None, crop_coords = None, crop_extra = 0):
     print("hello")

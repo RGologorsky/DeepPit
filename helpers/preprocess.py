@@ -7,7 +7,7 @@
 #  5. mask2bbox / print bbox
 #  6. crop thershold
 #  7. resample2reference
-#  
+#  8. get largest connected copmonent
 
 # load data
 import os
@@ -21,6 +21,7 @@ import meshio
 # numpy to SITK conversion
 import numpy     as np
 import SimpleITK as sitk
+import torch # torch mask2bbox
 from .general import mask2sitk, sitk2np
 
 # segmentation
@@ -166,7 +167,7 @@ def mask2bbox(mask):
     return imin, imax+1, jmin, jmax+1, kmin, kmax+1
 
 def get_bbox_size(imin, imax, jmin, jmax, kmin, kmax):
-    return {imax - imin}, {jmax-jmin}, {kmax-kmin}
+    return imax - imin, jmax-jmin, kmax-kmin
 
 def print_bbox_size(imin, imax, jmin, jmax, kmin, kmax):
     print(f"{imax - imin}, {jmax-jmin}, {kmax-kmin}")
@@ -176,6 +177,61 @@ def print_bbox(imin, imax, jmin, jmax, kmin, kmax):
     print(f"Bounding box coord: from location ({jmin}, {kmin}) of slice {imin} to location ({jmax}, {kmax}) of slice {imax}.")
     #print(f"Slices: {imin}, {imax} ({imax-imin}), Rows: {jmin}, {jmax} ({jmax-jmin}), Cols: {kmin}, {kmax} ({kmax-kmin}).")
         
+
+def get_bbox_vals(i,j,k):
+    imin, imax = torch.where(i)[0][[0, -1]]
+    jmin, jmax = torch.where(j)[0][[0, -1]]
+    kmin, kmax = torch.where(k)[0][[0, -1]]
+    
+    # inclusive indices
+    return torch.tensor([imin, imax+1, jmin, jmax+1, kmin, kmax+1])
+
+def torch_mask2bbox(mask):
+    k = torch.any(torch.any(mask, dim=0), dim=0) # 0 -> 1,2 -> 1 -> 2 left
+    j = torch.any(torch.any(mask, dim=0), dim=1) # 0 -> 1,2 -> 2 -> 1 left
+    i = torch.any(torch.any(mask, dim=1), dim=1) # 1 -> 0,2 -> 0 -> 0 left
+    return get_bbox_vals(i,j,k)
+        
+def batch_get_bbox(yb, preds=False):
+    # BCDHW => BDHW, assumed C
+    if preds:
+        masks = torch.argmax(yb, dim=1).byte()
+    else:
+        masks =yb.squeeze(1).byte()
+    
+    # batchwise BDHW
+    # BDHW -> BHW -> BW
+    # BDHW -> BHW -> BH
+    # BDHW -> BDW -> BD 
+    bk = torch.any(torch.any(masks, dim=1), dim=1) # 0 -> 1,2 -> 1 -> 2 left
+    bj = torch.any(torch.any(masks, dim=1), dim=2) # 0 -> 1,2 -> 2 -> 1 left
+    bi = torch.any(torch.any(masks, dim=2), dim=2) # 1 -> 0,2 -> 0 -> 0 left
+
+    # for b in batch
+    return torch.stack([get_bbox_vals(i,j,k) for i,j,k in zip(bi,bj,bk)], dim=0)
+
+# masks = np.asarray(torch.argmax(predictions.cpu(), dim=0), dtype=bool)
+
+# def get_bbox_vals(i,j,k):
+#     imin, imax = np.where(i)[0][[0, -1]]
+#     jmin, jmax = np.where(j)[0][[0, -1]]
+#     kmin, kmax = np.where(k)[0][[0, -1]]
+    
+#     # inclusive indices
+#     return imin, imax+1, jmin, jmax+1, kmin, kmax+1
+    
+# def batch_preds_get_bbox(preds):
+#     # BCDHW => BDHW
+#     masks = np.asarray(torch.argmax(preds, dim=1).cpu(), dtype=bool)
+    
+#     # batchwise
+#     bi = np.any(masks, axis=(2, 3))
+#     bj = np.any(masks, axis=(1, 3))
+#     bk = np.any(masks, axis=(1, 2))
+    
+#     # for b in batch
+#     return [get_bbox_vals(i,j,k) for i,j,k in zip(bi,bj,bk)]
+
 
 # Crop https://github.com/SimpleITK/ISBI2018_TUTORIAL/blob/master/python/03_data_augmentation.ipynb
 def threshold_based_crop(image, mask):
@@ -273,4 +329,4 @@ def folder2objs_old(folder_name, train_data_dict, iso_spacing = (1, 1, 1), iso_i
     iso_obj       = get_isotropic(obj, iso_spacing, iso_interpolator)
     iso_mask_obj  = get_isotropic(np2sitk(mask_arr, obj), iso_spacing, iso_interpolator)
     
-    return iso_obj, iso_mask_obj
+    return iso_obj, iso_mask_objs
