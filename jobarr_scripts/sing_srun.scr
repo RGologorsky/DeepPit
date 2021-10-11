@@ -1,0 +1,1 @@
+srun -p gpu_dev --gres=gpu:2 --mem-per-cpu=4G -t 00-00:30:00 --cpus-per-task=2 --pty bash

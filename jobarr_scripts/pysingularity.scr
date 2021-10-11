@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --partition=gpu4_dev
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=1
+#SBATCH --cpus-per-task=5
+#SBATCH --time=0-03:30:00
+#SBATCH --mem-per-cpu=8G
+#SBATCH --gres=gpu:1
+#SBATCH --mail-user=rachel.gologorsky@gmail.com
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --job-name=sing_job_test
+#SBATCH --output=sing_test_%j.log
+#SBATCH --array=0-0
+#SBATCH --output=jobarray_output/train_job_array_n4_%A_%a.out
+module load python; module load singularity
+singularity exec --bind /gpfs/home/gologr01/DeepPit/:/DeepPit/ new_monai_1906.sif bash -c python3 'print(job_name)'
+singularity exec --bind /gpfs/home/gologr01/DeepPit/:/DeepPit/ new_monai_1906.sif bash -c python3 'import os; print(os.getcwd()); print(os.listdir())'
+singularity exec --bind /gpfs/home/gologr01/DeepPit/:/DeepPit/ new_monai_1906.sif bash -c 'jupyter nbconvert --to script DeepPit/02a_train_monai_fastai_single.ipynb'
+singularity exec --bind /gpfs/data/oermannlab/private_data/DeepPit/:/gpfs/data/oermannlab/private_data/DeepPit/ --bind /gpfs/home/gologr01/DeepPit/:/DeepPit/ --nv new_monai_1906.sif python3 DeepPit/02a_train_monai_fastai_single.py model_type=OBELISKHYBRID loss_type=BCE_loss pixdim=1.0 full_res=144 do_flip=True do_simple=True
+echo "SLURM_JOBID: " $SLURM_JOBID
